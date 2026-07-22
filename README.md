@@ -37,6 +37,7 @@ pnpm start
 Open these routes:
 
 - `/qr/?seat=1` - scannable phone connection page
+- `/qrcode` - short alias for the seat 1 QR page
 - `/phone/?seat=1` - phone camera sender and processed-frame viewer
 - `/decoder/?seat=1` - canvas captured by TouchDesigner Web Render TOP
 - `/healthz` - connection, routing, and frame counters

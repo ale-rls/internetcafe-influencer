@@ -73,7 +73,7 @@ export function createRequestHandler({ publicDir, getHealth, getQrPage }) {
       });
       return response.end();
     }
-    if (url.pathname === "/qr/") {
+    if (url.pathname === "/qr/" || url.pathname === "/qrcode" || url.pathname === "/qrcode/") {
       const seat = url.searchParams.get("seat") || "1";
       if (!/^[1-9]\d*$/.test(seat)) return sendJson(response, 400, { error: "seat must be a positive integer" });
       Promise.resolve(getQrPage(seat)).then(

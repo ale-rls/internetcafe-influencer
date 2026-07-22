@@ -62,6 +62,10 @@ test("HTTP routes expose health, QR, static phone content, and expected redirect
   assert.equal(qr.status, 200);
   assert.match(await qr.text(), /https:\/\/cafe\.example\/kiosk\/phone\/\?seat=1/);
 
+  const qrcode = await fetch(`${baseUrl}/qrcode`);
+  assert.equal(qrcode.status, 200);
+  assert.match(await qrcode.text(), /https:\/\/cafe\.example\/kiosk\/phone\/\?seat=1/);
+
   const health = await fetch(`${baseUrl}/healthz`);
   assert.equal(health.status, 200);
   const healthBody = await health.json();
