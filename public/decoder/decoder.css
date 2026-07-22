@@ -1,0 +1,52 @@
+:root {
+  color-scheme: dark;
+  background: #000;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-width: 512px;
+  min-height: 512px;
+  margin: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.decoder-shell {
+  position: relative;
+  width: 512px;
+  height: 512px;
+  overflow: hidden;
+  background: #000;
+}
+
+#decoder-canvas {
+  display: block;
+  width: 512px;
+  height: 512px;
+  background: #000;
+}
+
+.status {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  max-width: calc(100% - 24px);
+  padding: 6px 9px;
+  border-radius: 4px;
+  color: #fff;
+  background: rgb(0 0 0 / 72%);
+  font: 12px/1.25 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  transition: opacity 240ms ease;
+}
+
+.status.is-hidden {
+  opacity: 0;
+}

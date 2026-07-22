@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Internet Cafe — Decoder</title>
+    <link rel="stylesheet" href="./decoder.css" />
+  </head>
+  <body>
+    <main class="decoder-shell" aria-label="TouchDesigner decoder output">
+      <!-- Keep this canvas at its intrinsic size for a predictable Web Render TOP. -->
+      <canvas id="decoder-canvas" width="512" height="512" aria-label="Live decoded image"></canvas>
+      <div id="status" class="status" role="status" aria-live="polite">Connecting…</div>
+    </main>
+    <script type="module" src="./decoder.js"></script>
+  </body>
+</html>
