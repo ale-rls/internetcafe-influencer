@@ -6,6 +6,7 @@ npm-debug.log*
 *.pem
 *.key
 *.crt
+*.cer
 coverage/
 dist/
 .DS_Store
