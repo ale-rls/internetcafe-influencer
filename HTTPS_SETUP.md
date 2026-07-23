@@ -42,15 +42,21 @@ PHONE_BASE_URL=https://192.168.1.50:8443
 ```
 
 Keep `HOST=0.0.0.0`, `PORT=8443`, `TLS_CERT_FILE`, and `TLS_KEY_FILE` as
-shown unless the installation needs different values. `pnpm start` and
-`pnpm dev` load `.env` when it exists. Start the server with:
+shown unless the installation needs different values. The TLS configuration
+also enables a separate `http://127.0.0.1:8080` / `ws://127.0.0.1:8080`
+listener for TouchDesigner. Both listeners share one connection registry and
+frame router. `LOCAL_HTTP_ENABLED=false` disables it; `LOCAL_HTTP_PORT` changes
+its port. `LOCAL_HTTP_HOST` is intentionally restricted to `127.0.0.1`, so
+plaintext camera traffic cannot accidentally be exposed to the LAN.
+
+`pnpm start` and `pnpm dev` load `.env` when it exists. Start the server with:
 
 ```sh
 pnpm start
 ```
 
 With the TLS variables present, the health endpoint reports `"transport":
-"https/wss"`.
+"https/wss"` and the active loopback listener under `"localHttp"`.
 
 ## Trust the certificate on one test phone
 

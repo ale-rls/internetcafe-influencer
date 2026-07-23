@@ -48,7 +48,7 @@ camera acceptance.
 
 ## TouchDesigner and phone round-trip acceptance
 
-Follow [touchdesigner/SETUP.md](touchdesigner/SETUP.md) to construct the listed
+Follow [touchdesigner/docs/v1-standalone.md](touchdesigner/docs/v1-standalone.md) to construct the listed
 operators and load the supplied callback DAT files. Then verify, in order:
 
 - `web_render1` loads `/decoder/?seat=1` and the decoder WebSocket connects.

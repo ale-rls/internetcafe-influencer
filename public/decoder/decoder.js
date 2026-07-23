@@ -65,15 +65,12 @@ async function paintLatestFrame() {
   decodeInFlight = true;
   try {
     const bitmap = await createImageBitmap(frame, { imageOrientation: "none" });
-    // A newer image may arrive while this JPEG is decoding. Drop this stale result.
-    if (latestFrame) {
-      bitmap.close();
-    } else {
-      context.drawImage(bitmap, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-      bitmap.close();
-      firstFramePainted = true;
-      setStatus("Streaming", true);
-    }
+    // Always present the completed decode. latestFrame still holds only one
+    // newer image, so latency stays bounded without risking paint starvation.
+    context.drawImage(bitmap, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+    bitmap.close();
+    firstFramePainted = true;
+    setStatus("Streaming", true);
   } catch (error) {
     console.warn("Ignoring undecodable decoder frame", error);
     if (!firstFramePainted) setStatus("Waiting for JPEG frames…");

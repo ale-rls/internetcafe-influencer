@@ -134,11 +134,10 @@ async function paintNewestFrame() {
     newestFrame = undefined;
     try {
       const bitmap = await createImageBitmap(frame);
-      // If another result arrived during decoding, skip this stale image.
-      if (!newestFrame) {
-        drawCover(bitmap);
-        framesDown += 1;
-      }
+      // Always present the completed decode. Skipping it when a newer frame
+      // arrives can starve painting forever on slower mobile decoders.
+      drawCover(bitmap);
+      framesDown += 1;
       bitmap.close();
     } catch {
       // Ignore a malformed or interrupted image and await the next result.

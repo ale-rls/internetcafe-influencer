@@ -12,6 +12,16 @@ and binary frame routing. TouchDesigner remains an image processor and a
 WebSocket client. Frames are 512x512 JPEGs at an initial target of 10 fps;
 backpressured frames are dropped instead of queued.
 
+With TLS configured, the process starts two listeners that share the same
+pages, WebSocket registry, and frame router:
+
+- `https://0.0.0.0:8443` / `wss://...` for phones on the LAN.
+- `http://127.0.0.1:8080` / `ws://127.0.0.1:8080` for TouchDesigner on the
+  same machine.
+
+The plaintext listener is optional and is hard-limited to loopback; it cannot
+be exposed to the LAN by configuration.
+
 ## Requirements
 
 - Node.js 22 or newer
@@ -48,10 +58,11 @@ frames then route `phone -> decoder` and `touch-output -> phone`.
 
 ## TouchDesigner
 
-Build the small operator network described in
-[touchdesigner/SETUP.md](touchdesigner/SETUP.md). The supplied callback files
-register the WebSocket DAT as `touch-output` for seat 1 and send
-`processed_out` as JPEG at 10 Hz.
+See the [TouchDesigner file index](touchdesigner/README.md). Build the original
+[standalone network](touchdesigner/docs/v1-standalone.md), or use the reusable
+[`PhoneSender` Base](touchdesigner/docs/v2-phone-sender.md). The original
+standalone callbacks and the Base-specific callbacks are kept as separate
+files.
 
 ## Test
 
