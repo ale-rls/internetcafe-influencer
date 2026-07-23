@@ -151,6 +151,7 @@ function captureAndSend() {
   if (encoding || !video.videoWidth || !socket || socket.readyState !== WebSocket.OPEN) return;
   if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
 
+  const targetSocket = socket;
   encoding = true;
   const sourceWidth = video.videoWidth;
   const sourceHeight = video.videoHeight;
@@ -159,12 +160,23 @@ function captureAndSend() {
   const sourceY = (sourceHeight - side) / 2;
   captureContext.drawImage(video, sourceX, sourceY, side, side, 0, 0, TARGET_SIZE, TARGET_SIZE);
 
-  captureCanvas.toBlob((blob) => {
-    encoding = false;
-    if (!blob || !socket || socket.readyState !== WebSocket.OPEN) return;
-    if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return;
-    socket.send(blob);
-    framesUp += 1;
+  captureCanvas.toBlob(async (blob) => {
+    try {
+      if (!blob || socket !== targetSocket || targetSocket.readyState !== WebSocket.OPEN) return;
+
+      // Materialize the JPEG before send(). Browsers may prepare Blob payloads
+      // asynchronously, which can make bufferedAmount lag behind queued frames.
+      const jpeg = await blob.arrayBuffer();
+      if (socket !== targetSocket || targetSocket.readyState !== WebSocket.OPEN) return;
+      if (targetSocket.bufferedAmount > MAX_BUFFERED_BYTES) return;
+
+      targetSocket.send(jpeg);
+      framesUp += 1;
+    } catch {
+      // Drop an interrupted conversion/send and let the next capture retry.
+    } finally {
+      encoding = false;
+    }
   }, "image/jpeg", JPEG_QUALITY);
 }
 
