@@ -28,7 +28,10 @@ def _send_processed_jpeg():
 		_error_once('Missing required TOP: stream_source')
 		raise RuntimeError('Missing stream_source')
 
-	jpeg = stream_source.saveByteArray('.jpg', quality=0.7)
+	quality_par = getattr(me.parent().par, 'Jpegquality', None)
+	quality = float(quality_par.eval()) if quality_par is not None else 0.7
+	quality = max(0.1, min(1.0, quality))
+	jpeg = stream_source.saveByteArray('.jpg', quality=quality)
 	bytes_sent = ws_output.sendBinary(jpeg)
 	if bytes_sent is not None and bytes_sent < 0:
 		ws_output.store('touch_output_registered', False)
@@ -37,6 +40,7 @@ def _send_processed_jpeg():
 
 	me.store('last_error', None)
 	me.parent().store('last_jpeg_bytes', bytes_sent if bytes_sent is not None else len(jpeg))
+	me.parent().store('last_jpeg_quality', quality)
 
 
 def onStart():

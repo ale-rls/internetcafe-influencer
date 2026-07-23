@@ -13,6 +13,7 @@ PARAM_DEFAULTS = {
 	'Seat': 1,
 	'Host': '127.0.0.1',
 	'Port': 8080,
+	'Jpegquality': 0.7,
 	'Active': False,
 }
 
@@ -48,6 +49,12 @@ class ParameterManager:
 			p = page.appendInt('Port', label='Port')[0]
 			p.default = p.val = PARAM_DEFAULTS['Port']
 			p.min, p.max = 1, 65535
+			p.clampMin = p.clampMax = True
+
+		if not hasattr(par, 'Jpegquality'):
+			p = page.appendFloat('Jpegquality', label='JPEG Quality')[0]
+			p.default = p.val = PARAM_DEFAULTS['Jpegquality']
+			p.min, p.max = 0.1, 1.0
 			p.clampMin = p.clampMax = True
 
 		if not hasattr(par, 'Active'):
