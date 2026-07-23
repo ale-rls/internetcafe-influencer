@@ -172,7 +172,13 @@ async function startCamera() {
   cameraMessage.textContent = "Opening camera…";
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "user" } },
+      video: {
+        facingMode: { ideal: "user" },
+        width: { ideal: TARGET_SIZE },
+        height: { ideal: TARGET_SIZE },
+        aspectRatio: { ideal: 1 },
+        frameRate: { ideal: TARGET_FPS, max: TARGET_FPS },
+      },
       audio: false,
     });
     video.srcObject = stream;
