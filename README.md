@@ -41,6 +41,10 @@ cp .env.example .env
 Configure the LAN address and certificate paths in `.env`, following
 [HTTPS_SETUP.md](HTTPS_SETUP.md), then run:
 
+For a complete Windows walkthrough, including mkcert, Windows Firewall,
+iPhone trust, background startup, and the seat 1 acceptance test, see
+[WINDOWS_SETUP.md](WINDOWS_SETUP.md).
+
 ```sh
 pnpm start
 ```
