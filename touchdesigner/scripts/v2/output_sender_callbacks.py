@@ -7,6 +7,17 @@ import time
 SEND_INTERVAL_SECONDS = 0.1
 
 
+def _should_throttle(now, last_send):
+	if last_send is None:
+		return False
+
+	elapsed = now - last_send
+	# Operator storage is saved in the .toe, while time.monotonic() resets
+	# when the machine restarts. A negative elapsed time is a saved timestamp
+	# from the previous monotonic clock and must not suppress new output.
+	return 0 <= elapsed < SEND_INTERVAL_SECONDS
+
+
 def _error_once(message):
 	if me.fetch('last_error', None, search=False) == message:
 		return
@@ -61,7 +72,7 @@ def onFrameStart(frame):
 
 	now = time.monotonic()
 	last_send = me.fetch('last_send_monotonic', None, search=False)
-	if last_send is not None and now - last_send < SEND_INTERVAL_SECONDS:
+	if _should_throttle(now, last_send):
 		return
 
 	me.store('last_send_monotonic', now)
