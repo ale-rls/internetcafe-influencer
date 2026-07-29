@@ -1,6 +1,6 @@
 # Browser MediaPipe face tracking
 
-The decoder page runs MediaPipe on the exact 512x512 phone frame displayed by
+The decoder page runs MediaPipe on the exact 720x1280 phone frame displayed by
 the Web Render TOP. A second WebSocket carries full-precision landmark values
 to TouchDesigner. This replaces the MediaPipe TOX, Spout Out TOP, and SpoutCam.
 
@@ -34,6 +34,10 @@ Set `ws_tracking` Active on. Its callback registers as `tracking-sink` for seat
 ```python
 op('ws_tracking').parent().store('tracking_seat', 2)
 ```
+
+Set the Web Render TOP and the downstream image-processing TOP chain to
+`720x1280`. Do not stretch a square intermediate into the portrait output; the
+browser landmarks are normalized against this exact portrait frame.
 
 The browser packet contains 478 MediaPipe landmarks. The compatibility Script
 CHOP outputs 479 samples in two channels named `x` and `y`: samples 0-477 hold

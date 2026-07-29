@@ -1,4 +1,6 @@
-const TARGET_SIZE = 512;
+const TARGET_WIDTH = 720;
+const TARGET_HEIGHT = 1280;
+const TARGET_ASPECT = TARGET_WIDTH / TARGET_HEIGHT;
 const TARGET_FPS = 23;
 const JPEG_QUALITY = 0.7;
 // Prefer dropping a capture over queueing stale frames when the uplink is busy.
@@ -36,8 +38,8 @@ const NOTIFICATION_APPS = {
 };
 
 const captureCanvas = document.createElement("canvas");
-captureCanvas.width = TARGET_SIZE;
-captureCanvas.height = TARGET_SIZE;
+captureCanvas.width = TARGET_WIDTH;
+captureCanvas.height = TARGET_HEIGHT;
 const captureContext = captureCanvas.getContext("2d", { alpha: false });
 
 let socket;
@@ -229,12 +231,34 @@ function captureAndSend() {
 
   const targetSocket = socket;
   encoding = true;
-  const sourceWidth = video.videoWidth;
-  const sourceHeight = video.videoHeight;
-  const side = Math.min(sourceWidth, sourceHeight);
-  const sourceX = (sourceWidth - side) / 2;
-  const sourceY = (sourceHeight - side) / 2;
-  captureContext.drawImage(video, sourceX, sourceY, side, side, 0, 0, TARGET_SIZE, TARGET_SIZE);
+  const videoWidth = video.videoWidth;
+  const videoHeight = video.videoHeight;
+  const sourceAspect = videoWidth / videoHeight;
+  let sourceX = 0;
+  let sourceY = 0;
+  let sourceWidth = videoWidth;
+  let sourceHeight = videoHeight;
+
+  // Center-crop without stretching so the JPEG, decoder canvas, MediaPipe
+  // landmarks, and TouchDesigner output all share one 9:16 coordinate space.
+  if (sourceAspect > TARGET_ASPECT) {
+    sourceWidth = videoHeight * TARGET_ASPECT;
+    sourceX = (videoWidth - sourceWidth) / 2;
+  } else {
+    sourceHeight = videoWidth / TARGET_ASPECT;
+    sourceY = (videoHeight - sourceHeight) / 2;
+  }
+  captureContext.drawImage(
+    video,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    TARGET_WIDTH,
+    TARGET_HEIGHT,
+  );
 
   captureCanvas.toBlob(async (blob) => {
     try {
@@ -263,9 +287,9 @@ async function startCamera() {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "user" },
-        width: { ideal: TARGET_SIZE },
-        height: { ideal: TARGET_SIZE },
-        aspectRatio: { ideal: 1 },
+        width: { ideal: TARGET_WIDTH },
+        height: { ideal: TARGET_HEIGHT },
+        aspectRatio: { ideal: TARGET_ASPECT },
         frameRate: { ideal: TARGET_FPS, max: TARGET_FPS },
       },
       audio: false,

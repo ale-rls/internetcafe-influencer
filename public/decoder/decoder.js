@@ -1,4 +1,5 @@
-const OUTPUT_SIZE = 512;
+const OUTPUT_WIDTH = 720;
+const OUTPUT_HEIGHT = 1280;
 const RECONNECT_BASE_MS = 250;
 const RECONNECT_MAX_MS = 8_000;
 const STREAM_PATH = "/stream";
@@ -161,7 +162,7 @@ async function paintLatestFrame() {
     const bitmap = await createImageBitmap(frame, { imageOrientation: "none" });
     // Always present the completed decode. latestFrame still holds only one
     // newer image, so latency stays bounded without risking paint starvation.
-    context.drawImage(bitmap, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+    context.drawImage(bitmap, 0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT);
     if (trackingWorkerReady && !trackingFrameInFlight) {
       trackingFrameInFlight = true;
       frameId = (frameId + 1) >>> 0;

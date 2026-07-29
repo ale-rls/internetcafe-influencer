@@ -10,8 +10,8 @@
 html,
 body {
   width: 100%;
-  min-width: 512px;
-  min-height: 512px;
+  min-width: 720px;
+  min-height: 1280px;
   margin: 0;
   overflow: hidden;
   background: #000;
@@ -19,16 +19,16 @@ body {
 
 .decoder-shell {
   position: relative;
-  width: 512px;
-  height: 512px;
+  width: 720px;
+  height: 1280px;
   overflow: hidden;
   background: #000;
 }
 
 #decoder-canvas {
   display: block;
-  width: 512px;
-  height: 512px;
+  width: 720px;
+  height: 1280px;
   background: #000;
 }
 

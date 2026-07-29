@@ -86,7 +86,8 @@ to add `ws_tracking` and `tracking_landmarks`, then verify:
 - `tracking_landmarks` contains 479 samples in channels `x` and `y`: 478
   MediaPipe landmarks followed by one compatibility-padding sample for the
   artist's hardcoded landmark-texture width.
-- The existing CHOP to TOP remains floating point and the GLSL overlay aligns
-  at the center and edges of the 512x512 image.
+- The Web Render TOP and downstream image path are 720x1280. The existing CHOP
+  to TOP remains floating point, and the GLSL overlay aligns at the center and
+  edges of the portrait image.
 - If landmarks consistently trail the image, measure the offset and add only
   that many frames of Cache TOP delay to the video path.

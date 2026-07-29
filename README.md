@@ -9,7 +9,7 @@ phone camera -> terminal WebSocket server -> TouchDesigner Web Render TOP
 
 The terminal process owns the web app, QR page, HTTPS, connection registry,
 and binary frame routing. TouchDesigner remains an image processor and a
-WebSocket client. Frames are 512x512 JPEGs; the phone uplink targets 23 fps,
+WebSocket client. Frames are 720x1280 portrait JPEGs; the phone uplink targets 23 fps,
 while the v2 TouchDesigner return sender defaults to 10 fps. Backpressured
 frames are dropped instead of queued.
 
