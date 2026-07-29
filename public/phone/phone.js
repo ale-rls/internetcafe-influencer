@@ -1,5 +1,5 @@
 const TARGET_SIZE = 512;
-const TARGET_FPS = 10;
+const TARGET_FPS = 23;
 const JPEG_QUALITY = 0.7;
 // Prefer dropping a capture over queueing stale frames when the uplink is busy.
 const MAX_BUFFERED_BYTES = 0;
