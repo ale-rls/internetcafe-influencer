@@ -2,6 +2,8 @@ const OUTPUT_SIZE = 512;
 const RECONNECT_BASE_MS = 250;
 const RECONNECT_MAX_MS = 8_000;
 const STREAM_PATH = "/stream";
+const TRACKING_RECONNECT_BASE_MS = 250;
+const TRACKING_RECONNECT_MAX_MS = 8_000;
 
 const canvas = document.querySelector("#decoder-canvas");
 const status = document.querySelector("#status");
@@ -25,6 +27,15 @@ let paintScheduled = false;
 let decodeInFlight = false;
 let firstFramePainted = false;
 let isStopping = false;
+let frameId = 0;
+let trackingWorkerReady = false;
+let trackingFrameInFlight = false;
+let trackingSocket;
+let trackingReconnectTimer;
+let trackingReconnectAttempt = 0;
+let trackingRegistered = false;
+
+const trackingWorker = new Worker("./tracking-worker.js", { type: "module" });
 
 function setStatus(message, hidden = false) {
   status.textContent = message;
@@ -35,6 +46,89 @@ function websocketUrl() {
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${scheme}//${window.location.host}${STREAM_PATH}`;
 }
+
+function trackingReconnectDelay() {
+  const ceiling = Math.min(
+    TRACKING_RECONNECT_MAX_MS,
+    TRACKING_RECONNECT_BASE_MS * 2 ** trackingReconnectAttempt,
+  );
+  trackingReconnectAttempt += 1;
+  return Math.round(ceiling * (0.8 + Math.random() * 0.4));
+}
+
+function scheduleTrackingReconnect() {
+  if (isStopping || trackingReconnectTimer) return;
+  trackingRegistered = false;
+  trackingReconnectTimer = window.setTimeout(() => {
+    trackingReconnectTimer = undefined;
+    connectTracking();
+  }, trackingReconnectDelay());
+}
+
+function connectTracking() {
+  if (isStopping) return;
+  if (trackingSocket
+    && (trackingSocket.readyState === WebSocket.OPEN
+      || trackingSocket.readyState === WebSocket.CONNECTING)) return;
+
+  const connection = new WebSocket(websocketUrl());
+  connection.binaryType = "arraybuffer";
+  trackingSocket = connection;
+
+  connection.addEventListener("open", () => {
+    if (trackingSocket !== connection) return;
+    trackingReconnectAttempt = 0;
+    connection.send(JSON.stringify({ type: "hello", role: "tracking-source", seat }));
+  });
+  connection.addEventListener("message", (event) => {
+    if (trackingSocket !== connection || typeof event.data !== "string") return;
+    try {
+      const payload = JSON.parse(event.data);
+      trackingRegistered = payload?.type === "hello-ack"
+        && payload.role === "tracking-source"
+        && String(payload.seat) === String(seat);
+    } catch {
+      // Ignore malformed status text; only the hello acknowledgement changes state.
+    }
+  });
+  connection.addEventListener("error", () => connection.close());
+  connection.addEventListener("close", () => {
+    if (trackingSocket === connection) trackingSocket = undefined;
+    scheduleTrackingReconnect();
+  });
+}
+
+function sendTrackingPacket(packet) {
+  if (!trackingRegistered || trackingSocket?.readyState !== WebSocket.OPEN) return;
+  if (trackingSocket.bufferedAmount > 0) return;
+  trackingSocket.send(packet);
+}
+
+trackingWorker.addEventListener("message", (event) => {
+  switch (event.data?.type) {
+    case "ready":
+      trackingWorkerReady = true;
+      document.body.dataset.trackingDelegate = event.data.delegate;
+      break;
+    case "tracking":
+      sendTrackingPacket(event.data.packet);
+      break;
+    case "frame-complete":
+      trackingFrameInFlight = false;
+      break;
+    case "frame-error":
+      console.warn("MediaPipe could not process a decoder frame", event.data.message);
+      break;
+    case "fatal-error":
+      trackingWorkerReady = false;
+      trackingFrameInFlight = false;
+      document.body.dataset.trackingError = event.data.message;
+      console.error("MediaPipe tracking is unavailable", event.data.message);
+      break;
+    default:
+      break;
+  }
+});
 
 function nextReconnectDelay() {
   const ceiling = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** reconnectAttempt);
@@ -68,7 +162,14 @@ async function paintLatestFrame() {
     // Always present the completed decode. latestFrame still holds only one
     // newer image, so latency stays bounded without risking paint starvation.
     context.drawImage(bitmap, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-    bitmap.close();
+    if (trackingWorkerReady && !trackingFrameInFlight) {
+      trackingFrameInFlight = true;
+      frameId = (frameId + 1) >>> 0;
+      const timestampMs = performance.now();
+      trackingWorker.postMessage({ type: "frame", bitmap, frameId, timestampMs }, [bitmap]);
+    } else {
+      bitmap.close();
+    }
     firstFramePainted = true;
     setStatus("Streaming", true);
   } catch (error) {
@@ -135,7 +236,11 @@ function connect() {
 window.addEventListener("beforeunload", () => {
   isStopping = true;
   if (reconnectTimer) window.clearTimeout(reconnectTimer);
+  if (trackingReconnectTimer) window.clearTimeout(trackingReconnectTimer);
   if (socket) socket.close();
+  if (trackingSocket) trackingSocket.close();
+  trackingWorker.terminate();
 });
 
 connect();
+connectTracking();

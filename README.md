@@ -56,7 +56,9 @@ Open these routes:
 - `/stream` - binary WebSocket endpoint
 
 The first JSON message on every WebSocket registers one role and seat. Binary
-frames then route `phone -> decoder` and `touch-output -> phone`.
+frames then route `phone -> decoder`, `touch-output -> phone`, and
+`tracking-source -> tracking-sink`. The decoder runs browser MediaPipe in a
+worker and sends versioned Float32 face-landmark packets to TouchDesigner.
 
 ## TouchDesigner
 
@@ -65,6 +67,10 @@ See the [TouchDesigner file index](touchdesigner/README.md). Build the original
 [`PhoneSender` Base](touchdesigner/docs/v2-phone-sender.md). The original
 standalone callbacks and the Base-specific callbacks are kept as separate
 files.
+
+For face tracking without SpoutCam, follow
+[`browser-face-tracking.md`](touchdesigner/docs/browser-face-tracking.md). It
+recreates the artist's 479-sample compatibility `x/y` CHOP strip for the existing GLSL filter.
 
 ## Test
 

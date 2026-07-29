@@ -1,5 +1,6 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -7,9 +8,16 @@ const CONTENT_TYPES = {
   ".ico": "image/x-icon",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml",
+  ".task": "application/octet-stream",
+  ".wasm": "application/wasm",
 };
+const DEFAULT_MEDIAPIPE_DIR = resolve(fileURLToPath(
+  new URL("../node_modules/@mediapipe/tasks-vision/", import.meta.url),
+));
+const MEDIAPIPE_ROUTE_PREFIX = "/vendor/mediapipe/";
 const CONTROL_SEATS = ["1", "2", "3", "4"];
 const NOTIFICATION_APPS = new Set(["instagram", "whatsapp"]);
 const MAX_NOTIFICATION_BODY_BYTES = 16 * 1024;
@@ -88,7 +96,19 @@ function notificationRequest(body) {
   };
 }
 
-function resolveAsset(publicDir, pathname) {
+function safeAsset(root, relativePath) {
+  const safeRelative = normalize(relativePath);
+  const candidate = resolve(join(root, safeRelative));
+  if (candidate !== root && !candidate.startsWith(root + sep)) return null;
+  if (!existsSync(candidate) || !statSync(candidate).isFile()) return null;
+  return candidate;
+}
+
+function resolveAsset(publicDir, mediapipeDir, pathname) {
+  if (pathname.startsWith(MEDIAPIPE_ROUTE_PREFIX)) {
+    return safeAsset(mediapipeDir, pathname.slice(MEDIAPIPE_ROUTE_PREFIX.length));
+  }
+
   const routeFiles = {
     "/phone": "phone/index.html",
     "/phone/": "phone/index.html",
@@ -100,15 +120,19 @@ function resolveAsset(publicDir, pathname) {
     "/qr/": "qr/index.html",
   };
   const relative = routeFiles[pathname] || pathname.replace(/^\/+/, "");
-  const safeRelative = normalize(relative);
-  const candidate = resolve(join(publicDir, safeRelative));
-  if (candidate !== publicDir && !candidate.startsWith(publicDir + sep)) return null;
-  if (!existsSync(candidate) || !statSync(candidate).isFile()) return null;
-  return candidate;
+  return safeAsset(publicDir, relative);
 }
 
-export function createRequestHandler({ publicDir, getHealth, getQrPage, controlEnabled = false, sendNotification }) {
+export function createRequestHandler({
+  publicDir,
+  mediapipeDir = DEFAULT_MEDIAPIPE_DIR,
+  getHealth,
+  getQrPage,
+  controlEnabled = false,
+  sendNotification,
+}) {
   const root = resolve(publicDir);
+  const mediapipeRoot = resolve(mediapipeDir);
   return (request, response) => {
     let url;
     try {
@@ -179,7 +203,7 @@ export function createRequestHandler({ publicDir, getHealth, getQrPage, controlE
     } catch {
       return sendJson(response, 400, { error: "invalid path encoding" });
     }
-    const asset = resolveAsset(root, decodedPath);
+    const asset = resolveAsset(root, mediapipeRoot, decodedPath);
     if (!asset) return sendJson(response, 404, { error: "not found" });
     const stat = statSync(asset);
     response.writeHead(200, {

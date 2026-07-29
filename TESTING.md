@@ -10,9 +10,9 @@ pnpm test
 ```
 
 The tests cover the public QR URL contract, QR rendering boundary, static and
-health routes, one-seat WebSocket routing/replacement, and the router's
-backpressure-drop policy. They do not need a camera, a real QR scan, or
-TouchDesigner.
+health routes, one-seat WebSocket routing/replacement, tracking packet encoding
+and routing, MediaPipe asset delivery, and the router's backpressure-drop
+policy. They do not need a camera, a real QR scan, or TouchDesigner.
 
 ## Desktop two-client smoke test
 
@@ -71,3 +71,22 @@ operators and load the supplied callback DAT files. Then verify, in order:
 Record browser/device, URL, certificate state, and observed frame rates with
 any acceptance failure. A single-seat prototype intentionally replaces a newer
 connection for the same role and seat; this is not a multi-user session test.
+
+## Browser face-tracking acceptance
+
+Follow [touchdesigner/docs/browser-face-tracking.md](touchdesigner/docs/browser-face-tracking.md)
+to add `ws_tracking` and `tracking_landmarks`, then verify:
+
+- `/healthz` shows `tracking-source: true` after the decoder page loads and
+  `tracking-sink: true` after the TouchDesigner WebSocket DAT activates.
+- The decoder page continues painting while MediaPipe initializes; a tracking
+  failure must not interrupt the phone image.
+- `ws_tracking.fetch('tracking_landmark_count', 0)` reports 478 when a face is
+  visible and returns to 0 when the face leaves the frame.
+- `tracking_landmarks` contains 479 samples in channels `x` and `y`: 478
+  MediaPipe landmarks followed by one compatibility-padding sample for the
+  artist's hardcoded landmark-texture width.
+- The existing CHOP to TOP remains floating point and the GLSL overlay aligns
+  at the center and edges of the 512x512 image.
+- If landmarks consistently trail the image, measure the offset and add only
+  that many frames of Cache TOP delay to the video path.

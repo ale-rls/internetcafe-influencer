@@ -68,6 +68,33 @@ test("FrameRouter drops a frame instead of growing a backpressured destination q
   assert.equal(decoder.sent.length, 1, "no binary frame is queued after hello acknowledgement");
 });
 
+test("FrameRouter routes tracking packets only to the matching seat tracking sink", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const source = new FakeSocket();
+  const sink = new FakeSocket();
+  const otherSeatSink = new FakeSocket();
+  register(router, source, "tracking-source", "1");
+  register(router, sink, "tracking-sink", "1");
+  register(router, otherSeatSink, "tracking-sink", "2");
+
+  const packet = Buffer.from("ITRK-packet");
+  source.emit("message", packet, true);
+
+  assert.deepEqual(sink.sent.at(-1).data, packet);
+  assert.equal(otherSeatSink.sent.length, 1, "other seat receives only its hello acknowledgement");
+});
+
+test("FrameRouter rejects binary messages from receive-only roles", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const sink = new FakeSocket();
+  register(router, sink, "tracking-sink", "1");
+
+  sink.emit("message", Buffer.from("not-allowed"), true);
+
+  assert.deepEqual(sink.closed, { code: 1008, reason: "tracking-sink is receive-only" });
+  assert.equal(router.snapshot().counters.rejectedMessages, 1);
+});
+
 test("FrameRouter sends notification text only to the requested phone seats", () => {
   const router = new FrameRouter({ logger: { info() {}, warn() {} } });
   const seatOnePhone = new FakeSocket();

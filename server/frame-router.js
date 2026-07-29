@@ -1,6 +1,17 @@
 import { WebSocket } from "ws";
 
-const ROLES = new Set(["phone", "decoder", "touch-output"]);
+const ROLES = new Set([
+  "phone",
+  "decoder",
+  "touch-output",
+  "tracking-source",
+  "tracking-sink",
+]);
+const BINARY_TARGET_ROLE = new Map([
+  ["phone", "decoder"],
+  ["touch-output", "phone"],
+  ["tracking-source", "tracking-sink"],
+]);
 const SEAT_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 function blankCounters() {
@@ -54,11 +65,12 @@ export class FrameRouter {
     }
 
     if (!isBinary) return this.reject(client.socket, "only binary frames are allowed after hello");
-    if (client.role === "decoder") return this.reject(client.socket, "decoder is receive-only");
+
+    const targetRole = BINARY_TARGET_ROLE.get(client.role);
+    if (!targetRole) return this.reject(client.socket, `${client.role} is receive-only`);
 
     this.counters.receivedFrames += 1;
     this.counters.receivedBytes += data.byteLength;
-    const targetRole = client.role === "phone" ? "decoder" : "phone";
     const target = this.seats.get(client.seat)?.get(targetRole)?.socket;
 
     if (!target || target.readyState !== WebSocket.OPEN) {
@@ -91,7 +103,10 @@ export class FrameRouter {
     const role = hello?.type === "hello" ? hello.role : null;
     const seat = typeof hello?.seat === "number" ? String(hello.seat) : hello?.seat;
     if (!ROLES.has(role) || typeof seat !== "string" || !SEAT_PATTERN.test(seat)) {
-      return this.reject(client.socket, "hello requires role phone|decoder|touch-output and a valid seat");
+      return this.reject(
+        client.socket,
+        "hello requires a supported role and a valid seat",
+      );
     }
 
     let seatClients = this.seats.get(seat);

@@ -63,6 +63,20 @@ test("HTTP routes expose health, QR, static phone content, and expected redirect
   assert.equal(phone.status, 200);
   assert.match(phone.headers.get("content-type"), /^text\/html/);
 
+  const mediapipeModule = await fetch(`${baseUrl}/vendor/mediapipe/vision_bundle.mjs`);
+  assert.equal(mediapipeModule.status, 200);
+  assert.match(mediapipeModule.headers.get("content-type"), /^text\/javascript/);
+
+  const mediapipeWasm = await fetch(`${baseUrl}/vendor/mediapipe/wasm/vision_wasm_internal.wasm`, {
+    method: "HEAD",
+  });
+  assert.equal(mediapipeWasm.status, 200);
+  assert.equal(mediapipeWasm.headers.get("content-type"), "application/wasm");
+
+  const faceModel = await fetch(`${baseUrl}/models/face_landmarker.task`, { method: "HEAD" });
+  assert.equal(faceModel.status, 200);
+  assert.equal(faceModel.headers.get("content-type"), "application/octet-stream");
+
   const qr = await fetch(`${baseUrl}/qr/?seat=1`);
   assert.equal(qr.status, 200);
   assert.match(await qr.text(), /https:\/\/cafe\.example\/kiosk\/phone\/\?seat=1/);
@@ -131,8 +145,38 @@ test("WebSocket clients route one-seat frames and replace an older matching role
 
   const health = await (await fetch(`${baseUrl}/healthz`)).json();
   assert.equal(health.registeredConnections, 3);
-  assert.deepEqual(health.seats["1"], { phone: true, decoder: true, "touch-output": true });
+  assert.deepEqual(health.seats["1"], {
+    phone: true,
+    decoder: true,
+    "touch-output": true,
+    "tracking-source": false,
+    "tracking-sink": false,
+  });
   assert.equal(runtime.router.snapshot().counters.replacedConnections, 1);
+});
+
+test("tracking-source packets reach only the matching tracking-sink", async (t) => {
+  const { baseUrl } = await startRuntime(t);
+  const source = await connectRole(baseUrl, "tracking-source", 1);
+  const sink = await connectRole(baseUrl, "tracking-sink", 1);
+  const otherSink = await connectRole(baseUrl, "tracking-sink", 2);
+  t.after(() => {
+    source.close();
+    sink.close();
+    otherSink.close();
+  });
+
+  const packet = Buffer.from("ITRK-binary-test");
+  const received = nextMessage(sink);
+  source.send(packet);
+  const result = await received;
+  assert.equal(result.isBinary, true);
+  assert.deepEqual(result.data, packet);
+
+  const health = await (await fetch(`${baseUrl}/healthz`)).json();
+  assert.equal(health.seats["1"]["tracking-source"], true);
+  assert.equal(health.seats["1"]["tracking-sink"], true);
+  assert.equal(health.seats["2"]["tracking-sink"], true);
 });
 
 test("TLS configuration enables a loopback-only TouchDesigner listener by default", () => {

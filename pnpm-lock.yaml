@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@mediapipe/tasks-vision':
+        specifier: ^1.0.0
+        version: 1.0.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -16,6 +19,9 @@ importers:
         version: 8.21.1
 
 packages:
+
+  '@mediapipe/tasks-vision@1.0.0':
+    resolution: {integrity: sha512-D9xp3MEMArzkx4s+M7rDWCIIST7Bh0uqIImSazgX5nS05o3gfw/bT/wY6j7N6R+H6/AgvUM2lOPvAnniwdeQbg==}
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -139,6 +145,8 @@ packages:
     engines: {node: '>=8'}
 
 snapshots:
+
+  '@mediapipe/tasks-vision@1.0.0': {}
 
   ansi-regex@5.0.1: {}
 
