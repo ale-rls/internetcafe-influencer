@@ -64,7 +64,7 @@ export class FrameRouter {
       return this.register(client, data);
     }
 
-    if (!isBinary) return this.reject(client.socket, "only binary frames are allowed after hello");
+    if (!isBinary) return this.handleTextMessage(client, data);
 
     const targetRole = BINARY_TARGET_ROLE.get(client.role);
     if (!targetRole) return this.reject(client.socket, `${client.role} is receive-only`);
@@ -90,6 +90,64 @@ export class FrameRouter {
     });
     this.counters.forwardedFrames += 1;
     this.counters.forwardedBytes += data.byteLength;
+  }
+
+  handleTextMessage(client, rawData) {
+    let message;
+    try {
+      message = JSON.parse(rawData.toString("utf8"));
+    } catch {
+      return this.reject(client.socket, "invalid message JSON");
+    }
+
+    if (client.role !== "phone" || message?.type !== "camera-info") {
+      return this.reject(client.socket, "only phone camera-info text is allowed after hello");
+    }
+
+    const sourceWidth = Number(message.source?.width);
+    const sourceHeight = Number(message.source?.height);
+    if (
+      !Number.isInteger(sourceWidth)
+      || !Number.isInteger(sourceHeight)
+      || sourceWidth < 1
+      || sourceHeight < 1
+      || sourceWidth > 16_384
+      || sourceHeight > 16_384
+    ) {
+      return this.reject(client.socket, "camera-info requires valid source dimensions");
+    }
+
+    const optionalNumber = (value, max = 16_384) => {
+      const number = Number(value);
+      return Number.isFinite(number) && number >= 0 && number <= max ? number : null;
+    };
+    const optionalString = (value, maxLength = 240) => (
+      typeof value === "string" ? value.slice(0, maxLength) : null
+    );
+
+    client.camera = {
+      source: { width: sourceWidth, height: sourceHeight },
+      track: {
+        width: optionalNumber(message.track?.width),
+        height: optionalNumber(message.track?.height),
+        aspectRatio: optionalNumber(message.track?.aspectRatio, 10),
+        frameRate: optionalNumber(message.track?.frameRate, 240),
+        resizeMode: optionalString(message.track?.resizeMode, 32),
+        facingMode: optionalString(message.track?.facingMode, 32),
+      },
+      output: {
+        width: optionalNumber(message.output?.width),
+        height: optionalNumber(message.output?.height),
+      },
+      viewport: {
+        width: optionalNumber(message.viewport?.width),
+        height: optionalNumber(message.viewport?.height),
+        devicePixelRatio: optionalNumber(message.viewport?.devicePixelRatio, 10),
+        orientation: optionalString(message.viewport?.orientation, 64),
+      },
+      userAgent: optionalString(message.userAgent),
+      receivedAt: Date.now(),
+    };
   }
 
   register(client, rawData) {
@@ -172,15 +230,19 @@ export class FrameRouter {
 
   snapshot() {
     const seats = {};
+    const cameras = {};
     for (const [seat, clients] of this.seats) {
       seats[seat] = Object.fromEntries(
         [...ROLES].map((role) => [role, clients.get(role)?.socket.readyState === WebSocket.OPEN]),
       );
+      const phone = clients.get("phone");
+      if (phone?.camera) cameras[seat] = structuredClone(phone.camera);
     }
     return {
       connections: this.clients.size,
       registeredConnections: [...this.seats.values()].reduce((sum, clients) => sum + clients.size, 0),
       seats,
+      cameras,
       counters: { ...this.counters },
     };
   }

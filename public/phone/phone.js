@@ -73,6 +73,7 @@ function connect() {
     if (socket !== nextSocket) return;
     reconnectAttempt = 0;
     nextSocket.send(JSON.stringify({ type: "hello", role: "phone", seat }));
+    sendCameraInfo();
     setStatus(stream ? "Live" : "Connected — start camera", "live");
   });
 
@@ -97,6 +98,39 @@ function connect() {
     socket = undefined;
     scheduleReconnect();
   });
+}
+
+function sendCameraInfo() {
+  if (!stream || !video.videoWidth || !video.videoHeight) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+  const settings = stream.getVideoTracks()[0]?.getSettings?.() ?? {};
+  socket.send(JSON.stringify({
+    type: "camera-info",
+    source: {
+      width: video.videoWidth,
+      height: video.videoHeight,
+    },
+    track: {
+      width: settings.width ?? null,
+      height: settings.height ?? null,
+      aspectRatio: settings.aspectRatio ?? null,
+      frameRate: settings.frameRate ?? null,
+      resizeMode: settings.resizeMode ?? null,
+      facingMode: settings.facingMode ?? null,
+    },
+    output: {
+      width: TARGET_WIDTH,
+      height: TARGET_HEIGHT,
+    },
+    viewport: {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      orientation: window.screen.orientation?.type ?? null,
+    },
+    userAgent: navigator.userAgent,
+  }));
 }
 
 function receiveControlMessage(rawMessage) {
@@ -301,6 +335,7 @@ async function startCamera() {
     });
     video.srcObject = stream;
     await video.play();
+    sendCameraInfo();
     window.clearInterval(captureTimer);
     captureTimer = window.setInterval(captureAndSend, 1000 / TARGET_FPS);
     captureAndSend();

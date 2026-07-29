@@ -101,6 +101,7 @@ test("HTTP routes expose health, QR, static phone content, and expected redirect
     connections: 0,
     registeredConnections: 0,
     seats: {},
+    cameras: {},
     counters: {
       receivedFrames: 0,
       receivedBytes: 0,

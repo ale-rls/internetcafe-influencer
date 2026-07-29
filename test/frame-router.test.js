@@ -95,6 +95,48 @@ test("FrameRouter rejects binary messages from receive-only roles", () => {
   assert.equal(router.snapshot().counters.rejectedMessages, 1);
 });
 
+test("FrameRouter exposes bounded phone camera diagnostics by seat", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const phone = new FakeSocket();
+  register(router, phone, "phone", "2");
+
+  phone.emit("message", Buffer.from(JSON.stringify({
+    type: "camera-info",
+    source: { width: 1920, height: 1080 },
+    track: {
+      width: 1920,
+      height: 1080,
+      aspectRatio: 16 / 9,
+      frameRate: 30,
+      resizeMode: "crop-and-scale",
+      facingMode: "user",
+    },
+    output: { width: 720, height: 1280 },
+    viewport: {
+      width: 360,
+      height: 780,
+      devicePixelRatio: 3,
+      orientation: "portrait-primary",
+    },
+    userAgent: "Android test browser",
+  })), false);
+
+  const diagnostics = router.snapshot().cameras["2"];
+  assert.deepEqual(diagnostics.source, { width: 1920, height: 1080 });
+  assert.deepEqual(diagnostics.track, {
+    width: 1920,
+    height: 1080,
+    aspectRatio: 16 / 9,
+    frameRate: 30,
+    resizeMode: "crop-and-scale",
+    facingMode: "user",
+  });
+  assert.deepEqual(diagnostics.output, { width: 720, height: 1280 });
+  assert.equal(diagnostics.viewport.orientation, "portrait-primary");
+  assert.equal(diagnostics.userAgent, "Android test browser");
+  assert.ok(Number.isInteger(diagnostics.receivedAt));
+});
+
 test("FrameRouter sends notification text only to the requested phone seats", () => {
   const router = new FrameRouter({ logger: { info() {}, warn() {} } });
   const seatOnePhone = new FakeSocket();
