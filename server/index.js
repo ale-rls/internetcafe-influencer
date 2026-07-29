@@ -34,10 +34,15 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
     websocketPaths: ["/", "/stream"],
     ...router.snapshot(),
   });
-  const handler = createRequestHandler({
+  const requestHandlerOptions = {
     publicDir: config.publicDir,
     getHealth,
     getQrPage: (seat) => createQrPage({ phoneBaseUrl: config.phoneBaseUrl, seat }),
+    sendNotification: (notification, seats) => router.sendNotification(notification, seats),
+  };
+  const handler = createRequestHandler({
+    ...requestHandlerOptions,
+    controlEnabled: !localHttpEnabled && config.host === "127.0.0.1",
   });
   const server = config.tlsCertFile
     ? createHttpsServer(
@@ -45,7 +50,8 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
         handler,
       )
     : createHttpServer(handler);
-  const localServer = localHttpEnabled ? createHttpServer(handler) : null;
+  const localHandler = createRequestHandler({ ...requestHandlerOptions, controlEnabled: true });
+  const localServer = localHttpEnabled ? createHttpServer(localHandler) : null;
   const webSockets = new WebSocketServer({ noServer: true, maxPayload: config.maxPayloadBytes });
 
   function attachUpgradeHandler(httpServer) {

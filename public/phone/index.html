@@ -10,6 +10,20 @@
   <body>
     <canvas id="output" aria-label="Processed camera output"></canvas>
 
+    <section id="notification-region" class="notification-region" aria-live="assertive" hidden>
+      <article id="phone-notification" class="phone-notification" aria-label="Notification">
+        <div id="notification-icon" class="notification-icon notification-icon--instagram" aria-hidden="true">◎</div>
+        <div class="notification-content">
+          <div class="notification-meta">
+            <b id="notification-app">Instagram</b>
+            <time>now</time>
+          </div>
+          <strong id="notification-sender"></strong>
+          <p id="notification-message"></p>
+        </div>
+      </article>
+    </section>
+
     <aside class="hud" aria-live="polite">
       <div class="title-row">
         <span>Internet Café</span>

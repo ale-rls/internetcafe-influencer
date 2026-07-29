@@ -15,6 +15,73 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
   background: radial-gradient(circle at 50% 45%, #1b2034, #07080d 68%);
 }
 
+.notification-region {
+  position: fixed;
+  z-index: 5;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  left: max(10px, env(safe-area-inset-left));
+  pointer-events: none;
+  perspective: 900px;
+}
+
+.notification-region[hidden] { display: none; }
+
+.phone-notification {
+  display: flex;
+  gap: 11px;
+  width: min(100%, 470px);
+  min-height: 82px;
+  margin: 0 auto;
+  padding: 11px 12px;
+  border: 1px solid rgb(255 255 255 / 46%);
+  border-radius: 20px;
+  background: rgb(244 244 247 / 91%);
+  box-shadow: 0 12px 38px rgb(0 0 0 / 35%);
+  color: #151519;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translateY(calc(-100% - max(18px, env(safe-area-inset-top)))) scale(.96);
+  transform-origin: 50% 0;
+  opacity: 0;
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  transition: transform 300ms cubic-bezier(.2, .82, .24, 1), opacity 220ms ease;
+}
+
+.phone-notification.is-visible { transform: translateY(0) scale(1); opacity: 1; }
+.phone-notification.is-leaving { transform: translateY(-24px) scale(.98); opacity: 0; }
+
+.notification-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 39px;
+  height: 39px;
+  border-radius: 10px;
+  color: white;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.notification-icon--instagram {
+  background: radial-gradient(circle at 32% 105%, #ffd15c 0 20%, #ff4f74 38%, #a936b7 62%, #5865d8 100%);
+}
+
+.notification-icon--whatsapp {
+  background: #24c766;
+  font-family: Georgia, serif;
+  font-size: 29px;
+  transform: rotate(-18deg);
+}
+
+.notification-content { min-width: 0; flex: 1; }
+.notification-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 3px; }
+.notification-meta b { overflow: hidden; font-size: 11px; letter-spacing: .035em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.notification-meta time { color: #737378; font-size: 11px; }
+.notification-content > strong { display: block; overflow: hidden; font-size: 13px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.notification-content > p { display: -webkit-box; overflow: hidden; margin: 2px 0 0; color: #35353a; font-size: 13px; line-height: 1.28; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+
 .hud {
   position: fixed;
   z-index: 2;
@@ -70,3 +137,7 @@ button:active { transform: scale(.98); }
 button:disabled { opacity: .62; }
 
 #camera { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-notification { transition-duration: 1ms; }
+}

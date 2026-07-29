@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#101114" />
+    <title>Notification Control · Internet Café</title>
+    <link rel="stylesheet" href="./control.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Internet Café</p>
+          <h1>Notification control</h1>
+        </div>
+        <div class="local-badge"><span></span> Local control</div>
+      </header>
+
+      <div class="workspace">
+        <form id="notification-form" class="panel composer">
+          <fieldset>
+            <legend>Destination</legend>
+            <div id="seat-picker" class="segmented seat-picker">
+              <label><input type="radio" name="seat" value="all" checked /><span>All</span></label>
+              <label><input type="radio" name="seat" value="1" /><span>Seat 1 <i data-seat="1"></i></span></label>
+              <label><input type="radio" name="seat" value="2" /><span>Seat 2 <i data-seat="2"></i></span></label>
+              <label><input type="radio" name="seat" value="3" /><span>Seat 3 <i data-seat="3"></i></span></label>
+              <label><input type="radio" name="seat" value="4" /><span>Seat 4 <i data-seat="4"></i></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Notification app</legend>
+            <div class="app-picker">
+              <label class="app-option">
+                <input type="radio" name="app" value="instagram" checked />
+                <span><b class="app-icon app-icon--instagram">◎</b>Instagram</span>
+              </label>
+              <label class="app-option">
+                <input type="radio" name="app" value="whatsapp" />
+                <span><b class="app-icon app-icon--whatsapp">⌕</b>WhatsApp</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <label class="field">
+            <span>Sender</span>
+            <input id="sender" name="sender" maxlength="60" placeholder="internet.cafe" autocomplete="off" required />
+          </label>
+
+          <label class="field">
+            <span>Message <small><b id="message-count">0</b>/280</small></span>
+            <textarea id="message" name="message" maxlength="280" rows="4" placeholder="Write the notification message…" required></textarea>
+          </label>
+
+          <button id="send-button" class="send-button" type="submit">
+            <span>Send notification</span><kbd>Ctrl ↵</kbd>
+          </button>
+          <p id="send-status" class="send-status" role="status" aria-live="polite">Ready to send.</p>
+        </form>
+
+        <aside class="panel preview-panel">
+          <div class="preview-heading">
+            <span>Phone preview</span>
+            <span>5 seconds</span>
+          </div>
+          <div class="phone-frame">
+            <div class="phone-camera"></div>
+            <article id="notification-preview" class="native-notification notification--instagram">
+              <div id="preview-icon" class="app-icon app-icon--instagram">◎</div>
+              <div class="notification-copy">
+                <div class="notification-meta"><b id="preview-app">Instagram</b><time>now</time></div>
+                <strong id="preview-sender">internet.cafe</strong>
+                <p id="preview-message">Your notification will appear here.</p>
+              </div>
+            </article>
+            <div class="preview-glow"></div>
+          </div>
+          <p class="privacy-note">Sending is available only from this computer through the loopback interface.</p>
+        </aside>
+      </div>
+    </main>
+    <script type="module" src="./control.js"></script>
+  </body>
+</html>

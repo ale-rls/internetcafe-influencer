@@ -67,3 +67,35 @@ test("FrameRouter drops a frame instead of growing a backpressured destination q
   assert.equal(counters.droppedBackpressure, 1);
   assert.equal(decoder.sent.length, 1, "no binary frame is queued after hello acknowledgement");
 });
+
+test("FrameRouter sends notification text only to the requested phone seats", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const seatOnePhone = new FakeSocket();
+  const seatTwoPhone = new FakeSocket();
+  const seatTwoDecoder = new FakeSocket();
+  register(router, seatOnePhone, "phone", "1");
+  register(router, seatTwoPhone, "phone", "2");
+  register(router, seatTwoDecoder, "decoder", "2");
+
+  const delivery = router.sendNotification({
+    app: "whatsapp",
+    sender: "Internet Cafe",
+    message: "Meet me at seat two.",
+  }, ["2", "4"]);
+
+  assert.deepEqual(delivery, { deliveredSeats: ["2"], missingSeats: ["4"] });
+  assert.equal(seatOnePhone.sent.length, 1, "seat one receives only its hello acknowledgement");
+  assert.equal(seatTwoDecoder.sent.length, 1, "decoder receives only its hello acknowledgement");
+  assert.equal(seatTwoPhone.sent.at(-1).options.binary, false);
+  assert.deepEqual(
+    JSON.parse(seatTwoPhone.sent.at(-1).data),
+    {
+      type: "notification",
+      app: "whatsapp",
+      sender: "Internet Cafe",
+      message: "Meet me at seat two.",
+      durationMs: 5_000,
+      sentAt: JSON.parse(seatTwoPhone.sent.at(-1).data).sentAt,
+    },
+  );
+});

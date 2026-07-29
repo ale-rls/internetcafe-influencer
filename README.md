@@ -51,6 +51,7 @@ Open these routes:
 - `/qrcode` - short alias for the seat 1 QR page
 - `/phone/?seat=1` - phone camera sender and processed-frame viewer
 - `/decoder/?seat=1` - canvas captured by TouchDesigner Web Render TOP
+- `http://127.0.0.1:8080/control/` - computer-only notification controls
 - `/healthz` - connection, routing, and frame counters
 - `/stream` - binary WebSocket endpoint
 

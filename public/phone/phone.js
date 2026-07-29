@@ -5,6 +5,9 @@ const JPEG_QUALITY = 0.7;
 const MAX_BUFFERED_BYTES = 0;
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
+const NOTIFICATION_DURATION_MS = 5_000;
+const NOTIFICATION_TRANSITION_MS = 320;
+const MAX_QUEUED_NOTIFICATIONS = 8;
 
 const params = new URLSearchParams(window.location.search);
 const requestedSeat = params.get("seat");
@@ -19,7 +22,18 @@ const cameraMessage = document.querySelector("#camera-message");
 const statusElement = document.querySelector("#connection-status");
 const uplinkElement = document.querySelector("#uplink-fps");
 const downlinkElement = document.querySelector("#downlink-fps");
+const notificationRegion = document.querySelector("#notification-region");
+const phoneNotification = document.querySelector("#phone-notification");
+const notificationIcon = document.querySelector("#notification-icon");
+const notificationApp = document.querySelector("#notification-app");
+const notificationSender = document.querySelector("#notification-sender");
+const notificationMessage = document.querySelector("#notification-message");
 document.querySelector("#seat").textContent = `Seat ${seat}`;
+
+const NOTIFICATION_APPS = {
+  instagram: { label: "Instagram", glyph: "◎" },
+  whatsapp: { label: "WhatsApp", glyph: "⌕" },
+};
 
 const captureCanvas = document.createElement("canvas");
 captureCanvas.width = TARGET_SIZE;
@@ -36,6 +50,10 @@ let newestFrame;
 let decoding = false;
 let framesUp = 0;
 let framesDown = 0;
+let notificationTimer;
+let notificationTransitionTimer;
+let currentNotification;
+const notificationQueue = [];
 
 function setStatus(message, kind = "waiting") {
   statusElement.textContent = message;
@@ -64,7 +82,11 @@ function connect() {
   });
 
   nextSocket.addEventListener("message", (event) => {
-    if (socket !== nextSocket || typeof event.data === "string") return;
+    if (socket !== nextSocket) return;
+    if (typeof event.data === "string") {
+      receiveControlMessage(event.data);
+      return;
+    }
     enqueueProcessedFrame(event.data instanceof Blob
       ? event.data
       : new Blob([event.data], { type: "image/jpeg" }));
@@ -80,6 +102,60 @@ function connect() {
     socket = undefined;
     scheduleReconnect();
   });
+}
+
+function receiveControlMessage(rawMessage) {
+  let payload;
+  try {
+    payload = JSON.parse(rawMessage);
+  } catch {
+    return;
+  }
+  if (payload?.type !== "notification") return;
+  if (!NOTIFICATION_APPS[payload.app]) return;
+  if (typeof payload.sender !== "string" || typeof payload.message !== "string") return;
+
+  notificationQueue.push({
+    app: payload.app,
+    sender: payload.sender.slice(0, 60),
+    message: payload.message.slice(0, 280),
+  });
+  if (notificationQueue.length > MAX_QUEUED_NOTIFICATIONS) notificationQueue.shift();
+  if (!currentNotification) showNextNotification();
+}
+
+function showNextNotification() {
+  const notification = notificationQueue.shift();
+  if (!notification) return;
+
+  currentNotification = notification;
+  const presentation = NOTIFICATION_APPS[notification.app];
+  notificationIcon.className = `notification-icon notification-icon--${notification.app}`;
+  notificationIcon.textContent = presentation.glyph;
+  notificationApp.textContent = presentation.label;
+  notificationSender.textContent = notification.sender;
+  notificationMessage.textContent = notification.message;
+  notificationRegion.hidden = false;
+  phoneNotification.classList.remove("is-leaving");
+  window.requestAnimationFrame(() => phoneNotification.classList.add("is-visible"));
+
+  window.clearTimeout(notificationTimer);
+  notificationTimer = window.setTimeout(dismissNotification, NOTIFICATION_DURATION_MS);
+}
+
+function dismissNotification() {
+  if (!currentNotification) return;
+  window.clearTimeout(notificationTimer);
+  phoneNotification.classList.remove("is-visible");
+  phoneNotification.classList.add("is-leaving");
+  currentNotification = undefined;
+
+  window.clearTimeout(notificationTransitionTimer);
+  notificationTransitionTimer = window.setTimeout(() => {
+    phoneNotification.classList.remove("is-leaving");
+    notificationRegion.hidden = true;
+    showNextNotification();
+  }, NOTIFICATION_TRANSITION_MS);
 }
 
 function scheduleReconnect() {
@@ -220,10 +296,13 @@ window.setInterval(() => {
 window.addEventListener("beforeunload", () => {
   window.clearInterval(captureTimer);
   window.clearTimeout(reconnectTimer);
+  window.clearTimeout(notificationTimer);
+  window.clearTimeout(notificationTransitionTimer);
   stream?.getTracks().forEach((track) => track.stop());
   socket?.close();
 });
 
 resizeOutput();
+phoneNotification.addEventListener("click", dismissNotification);
 startButton.addEventListener("click", startCamera);
 connect();

@@ -119,6 +119,34 @@ export class FrameRouter {
     socket.close(1008, reason.slice(0, 123));
   }
 
+  sendNotification(notification, seats) {
+    const payload = JSON.stringify({
+      type: "notification",
+      app: notification.app,
+      sender: notification.sender,
+      message: notification.message,
+      durationMs: 5_000,
+      sentAt: Date.now(),
+    });
+    const deliveredSeats = [];
+    const missingSeats = [];
+
+    for (const seat of seats) {
+      const target = this.seats.get(String(seat))?.get("phone")?.socket;
+      if (!target || target.readyState !== WebSocket.OPEN) {
+        missingSeats.push(String(seat));
+        continue;
+      }
+
+      target.send(payload, { binary: false }, (error) => {
+        if (error) this.logger.warn?.(`[ws] notification send failed for seat ${seat}: ${error.message}`);
+      });
+      deliveredSeats.push(String(seat));
+    }
+
+    return { deliveredSeats, missingSeats };
+  }
+
   unregister(client) {
     this.clients.delete(client.socket);
     if (!client.role || !client.seat) return;

@@ -2,17 +2,19 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer as createNetServer } from "node:net";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { loadConfig } from "../server/config.js";
 import { createInternetCafeServer } from "../server/index.js";
 
 const QUIET_LOGGER = { info() {}, warn() {} };
+const PUBLIC_DIR = fileURLToPath(new URL("../public/", import.meta.url));
 
 async function startRuntime(t, overrides = {}) {
   const runtime = createInternetCafeServer({
     host: "127.0.0.1",
     port: 0,
-    publicDir: new URL("../public", import.meta.url).pathname,
+    publicDir: PUBLIC_DIR,
     phoneBaseUrl: "https://cafe.example/kiosk",
     maxPayloadBytes: 1024 * 1024,
     maxBufferedBytes: 1024 * 1024,
@@ -164,6 +166,12 @@ test("primary and local listeners share WebSocket routing and shutdown", async (
   assert.equal(localAddress.address, "127.0.0.1");
   const localBaseUrl = `http://127.0.0.1:${localAddress.port}`;
 
+  const primaryControl = await fetch(`${baseUrl}/control/`);
+  assert.equal(primaryControl.status, 404);
+  const localControl = await fetch(`${localBaseUrl}/control/`);
+  assert.equal(localControl.status, 200);
+  assert.match(await localControl.text(), /Notification control/);
+
   const decoder = await connectRole(localBaseUrl, "decoder");
   const phone = await connectRole(baseUrl, "phone");
   const touchOutput = await connectRole(localBaseUrl, "touch-output");
@@ -180,6 +188,42 @@ test("primary and local listeners share WebSocket routing and shutdown", async (
   const toPhone = nextMessage(phone);
   touchOutput.send(Buffer.from("touch-over-loopback"));
   assert.equal((await toPhone).data.toString(), "touch-over-loopback");
+
+  const notificationMessage = nextMessage(phone);
+  const notificationResponse = await fetch(`${localBaseUrl}/api/notifications`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      seat: "all",
+      app: "instagram",
+      sender: "internet.cafe",
+      message: "Someone liked your photo.",
+    }),
+  });
+  assert.equal(notificationResponse.status, 200);
+  assert.deepEqual(await notificationResponse.json(), {
+    ok: true,
+    target: "all",
+    deliveredSeats: ["1"],
+    missingSeats: ["2", "3", "4"],
+  });
+  const notificationFrame = await notificationMessage;
+  assert.equal(notificationFrame.isBinary, false);
+  assert.deepEqual(JSON.parse(notificationFrame.data.toString()), {
+    type: "notification",
+    app: "instagram",
+    sender: "internet.cafe",
+    message: "Someone liked your photo.",
+    durationMs: 5_000,
+    sentAt: JSON.parse(notificationFrame.data.toString()).sentAt,
+  });
+
+  const invalidNotification = await fetch(`${localBaseUrl}/api/notifications`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ seat: 9, app: "instagram", sender: "x", message: "y" }),
+  });
+  assert.equal(invalidNotification.status, 400);
 
   const localHealth = await (await fetch(`${localBaseUrl}/healthz`)).json();
   assert.deepEqual(localHealth.localHttp, {
@@ -201,7 +245,7 @@ test("a local-listener startup failure rolls back the primary listener", async (
   const runtime = createInternetCafeServer({
     host: "127.0.0.1",
     port: 0,
-    publicDir: new URL("../public", import.meta.url).pathname,
+    publicDir: PUBLIC_DIR,
     phoneBaseUrl: "https://cafe.example/kiosk",
     maxPayloadBytes: 1024 * 1024,
     maxBufferedBytes: 1024 * 1024,
