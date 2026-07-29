@@ -37,7 +37,9 @@ op('ws_tracking').parent().store('tracking_seat', 2)
 
 Set the Web Render TOP and the downstream image-processing TOP chain to
 `720x1280`. Do not stretch a square intermediate into the portrait output; the
-browser landmarks are normalized against this exact portrait frame.
+browser landmarks are normalized against this exact portrait frame. The phone
+preserves the camera's full field of view and pads any unused area rather than
+cropping or stretching a non-9:16 camera stream.
 
 The browser packet contains 478 MediaPipe landmarks. The compatibility Script
 CHOP outputs 479 samples in two channels named `x` and `y`: samples 0-477 hold

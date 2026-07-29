@@ -89,5 +89,7 @@ to add `ws_tracking` and `tracking_landmarks`, then verify:
 - The Web Render TOP and downstream image path are 720x1280. The existing CHOP
   to TOP remains floating point, and the GLSL overlay aligns at the center and
   edges of the portrait image.
+- The phone camera keeps its full field of view. Non-9:16 camera streams are
+  centered with padding rather than zoom-cropped or stretched.
 - If landmarks consistently trail the image, measure the offset and add only
   that many frames of Cache TOP delay to the video path.

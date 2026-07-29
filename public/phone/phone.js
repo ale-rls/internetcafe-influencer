@@ -1,6 +1,5 @@
 const TARGET_WIDTH = 720;
 const TARGET_HEIGHT = 1280;
-const TARGET_ASPECT = TARGET_WIDTH / TARGET_HEIGHT;
 const TARGET_FPS = 23;
 const JPEG_QUALITY = 0.7;
 // Prefer dropping a capture over queueing stale frames when the uplink is busy.
@@ -233,31 +232,22 @@ function captureAndSend() {
   encoding = true;
   const videoWidth = video.videoWidth;
   const videoHeight = video.videoHeight;
-  const sourceAspect = videoWidth / videoHeight;
-  let sourceX = 0;
-  let sourceY = 0;
-  let sourceWidth = videoWidth;
-  let sourceHeight = videoHeight;
+  const scale = Math.min(TARGET_WIDTH / videoWidth, TARGET_HEIGHT / videoHeight);
+  const drawWidth = videoWidth * scale;
+  const drawHeight = videoHeight * scale;
+  const drawX = (TARGET_WIDTH - drawWidth) / 2;
+  const drawY = (TARGET_HEIGHT - drawHeight) / 2;
 
-  // Center-crop without stretching so the JPEG, decoder canvas, MediaPipe
-  // landmarks, and TouchDesigner output all share one 9:16 coordinate space.
-  if (sourceAspect > TARGET_ASPECT) {
-    sourceWidth = videoHeight * TARGET_ASPECT;
-    sourceX = (videoWidth - sourceWidth) / 2;
-  } else {
-    sourceHeight = videoWidth / TARGET_ASPECT;
-    sourceY = (videoHeight - sourceHeight) / 2;
-  }
+  // Preserve the full camera field of view. Any aspect-ratio difference is
+  // padded instead of cropped, and MediaPipe sees this exact same canvas.
+  captureContext.fillStyle = "#000";
+  captureContext.fillRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
   captureContext.drawImage(
     video,
-    sourceX,
-    sourceY,
-    sourceWidth,
-    sourceHeight,
-    0,
-    0,
-    TARGET_WIDTH,
-    TARGET_HEIGHT,
+    drawX,
+    drawY,
+    drawWidth,
+    drawHeight,
   );
 
   captureCanvas.toBlob(async (blob) => {
@@ -289,7 +279,7 @@ async function startCamera() {
         facingMode: { ideal: "user" },
         width: { ideal: TARGET_WIDTH },
         height: { ideal: TARGET_HEIGHT },
-        aspectRatio: { ideal: TARGET_ASPECT },
+        resizeMode: { ideal: "none" },
         frameRate: { ideal: TARGET_FPS, max: TARGET_FPS },
       },
       audio: false,
