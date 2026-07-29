@@ -90,6 +90,7 @@ to add `ws_tracking` and `tracking_landmarks`, then verify:
   to TOP remains floating point, and the GLSL overlay aligns at the center and
   edges of the portrait image.
 - The phone camera fills the portrait viewport without padding or stretching.
-  A non-9:16 camera stream receives only one centered fallback cover crop.
+  The browser supplies a wider 4:3 stream without pre-cropping, and the capture
+  canvas performs one centered cover crop into 720x1280.
 - If landmarks consistently trail the image, measure the offset and add only
   that many frames of Cache TOP delay to the video path.

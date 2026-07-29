@@ -1,6 +1,9 @@
 const TARGET_WIDTH = 720;
 const TARGET_HEIGHT = 1280;
 const TARGET_ASPECT = TARGET_WIDTH / TARGET_HEIGHT;
+const CAMERA_WIDTH = 1280;
+const CAMERA_HEIGHT = 960;
+const CAMERA_ASPECT = CAMERA_WIDTH / CAMERA_HEIGHT;
 const TARGET_FPS = 23;
 const JPEG_QUALITY = 0.7;
 // Prefer dropping a capture over queueing stale frames when the uplink is busy.
@@ -275,8 +278,8 @@ function captureAndSend() {
   let sourceWidth = videoWidth;
   let sourceHeight = videoHeight;
 
-  // The browser is asked for native 9:16 crop-and-scale output. Only apply a
-  // single fallback cover crop when the device returns another aspect ratio.
+  // Start from the browser's wider, uncropped camera stream and perform the
+  // only camera-to-output crop here so Android cannot pre-crop the sensor.
   if (Math.abs(sourceAspect - TARGET_ASPECT) > 0.01) {
     if (sourceAspect > TARGET_ASPECT) {
       sourceWidth = videoHeight * TARGET_ASPECT;
@@ -325,10 +328,10 @@ async function startCamera() {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "user" },
-        width: { ideal: TARGET_WIDTH },
-        height: { ideal: TARGET_HEIGHT },
-        aspectRatio: { ideal: TARGET_ASPECT },
-        resizeMode: { ideal: "crop-and-scale" },
+        width: { ideal: CAMERA_WIDTH },
+        height: { ideal: CAMERA_HEIGHT },
+        aspectRatio: { ideal: CAMERA_ASPECT },
+        resizeMode: { ideal: "none" },
         frameRate: { ideal: TARGET_FPS, max: TARGET_FPS },
       },
       audio: false,
