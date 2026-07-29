@@ -24,8 +24,10 @@ def _parent(dat):
 
 
 def _seat(dat):
-	seat = _parent(dat).fetch('tracking_seat', 1)
-	return int(seat)
+	owner = _parent(dat)
+	if hasattr(owner.par, 'Seat'):
+		return int(owner.par.Seat.eval())
+	return int(owner.fetch('tracking_seat', 1))
 
 
 def _text(dat, name, message):
