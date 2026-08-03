@@ -18,5 +18,7 @@ Create these exact children inside `PhoneSender`:
 | `PhoneSenderExt` | Text DAT | `../scripts/v2/PhoneSenderExt.py` |
 
 Attach `PhoneSenderExt` through **Customize Component**, then re-init the
-extension after all exact-name children exist. It creates Seat, Host, Port, and
-Active. The fixed internal output is JPEG quality `0.7` at a maximum of 10 fps.
+extension after all exact-name children exist. It creates Seat, Host, Port,
+JPEG Quality, Output FPS, and Active. Each sender defaults to JPEG quality `0.7`
+at a maximum of 10 fps. For multi-phone projects, start with quality `0.6` and
+8 fps per sender, then increase them only if TouchDesigner remains responsive.

@@ -1,13 +1,13 @@
 # Paste this file directly into PhoneSender/send_execute (an Execute DAT).
-# Enable only Frame Start. The 10 JPEG/second limit stays internal for now.
+# Enable only Frame Start. JPEG quality and output rate come from PhoneSender.
 
 import time
 
 
-SEND_INTERVAL_SECONDS = 0.1
+DEFAULT_OUTPUT_FPS = 10.0
 
 
-def _should_throttle(now, last_send):
+def _should_throttle(now, last_send, send_interval_seconds):
 	if last_send is None:
 		return False
 
@@ -15,7 +15,14 @@ def _should_throttle(now, last_send):
 	# Operator storage is saved in the .toe, while time.monotonic() resets
 	# when the machine restarts. A negative elapsed time is a saved timestamp
 	# from the previous monotonic clock and must not suppress new output.
-	return 0 <= elapsed < SEND_INTERVAL_SECONDS
+	return 0 <= elapsed < send_interval_seconds
+
+
+def _send_interval_seconds():
+	output_fps_par = getattr(me.parent().par, 'Outputfps', None)
+	output_fps = float(output_fps_par.eval()) if output_fps_par is not None else DEFAULT_OUTPUT_FPS
+	output_fps = max(1.0, min(30.0, output_fps))
+	return 1.0 / output_fps
 
 
 def _error_once(message):
@@ -72,7 +79,7 @@ def onFrameStart(frame):
 
 	now = time.monotonic()
 	last_send = me.fetch('last_send_monotonic', None, search=False)
-	if _should_throttle(now, last_send):
+	if _should_throttle(now, last_send, _send_interval_seconds()):
 		return
 
 	me.store('last_send_monotonic', now)

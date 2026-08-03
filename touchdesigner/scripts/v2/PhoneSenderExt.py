@@ -14,6 +14,7 @@ PARAM_DEFAULTS = {
 	'Host': '127.0.0.1',
 	'Port': 8080,
 	'Jpegquality': 0.7,
+	'Outputfps': 10.0,
 	'Active': False,
 }
 
@@ -57,6 +58,12 @@ class ParameterManager:
 			p.min, p.max = 0.1, 1.0
 			p.clampMin = p.clampMax = True
 
+		if not hasattr(par, 'Outputfps'):
+			p = page.appendFloat('Outputfps', label='Output FPS')[0]
+			p.default = p.val = PARAM_DEFAULTS['Outputfps']
+			p.min, p.max = 1.0, 30.0
+			p.clampMin = p.clampMax = True
+
 		if not hasattr(par, 'Active'):
 			p = page.appendToggle('Active', label='Active')[0]
 			p.default = p.val = PARAM_DEFAULTS['Active']
@@ -82,9 +89,13 @@ class PhoneSenderExt:
 		self.params.setup()
 		self.params.setup_param_exec()
 
-		# Always load stopped, matching the StreamDiffusion component.
-		self.ownerComp.par.Active.val = False
-		self.Stop()
+		# Preserve the saved Active state across project loads and extension
+		# re-initialization. Forcing this off here leaves copied senders looking
+		# configured while their WebSocket and Execute DAT are both stopped.
+		if self.ownerComp.par.Active.eval():
+			self.Start()
+		else:
+			self.Stop()
 
 		print('PhoneSenderExt initialized')
 
@@ -115,6 +126,7 @@ class PhoneSenderExt:
 		ws_output.par.port = int(self.ownerComp.par.Port.eval())
 		ws_output.par.callbacks = self.ownerComp.op('websocket_callbacks')
 		ws_output.par.active = True
+		send_execute.par.framestart = True
 		send_execute.par.active = True
 
 		self.state = 'STREAMING'
