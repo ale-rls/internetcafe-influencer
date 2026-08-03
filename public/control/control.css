@@ -23,7 +23,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 legend, .field > span { display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px; color: #c6c7cc; font-size: 13px; font-weight: 680; }
 .field small { color: #777980; font-weight: 500; }
 
-.segmented { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
+.segmented { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
 .segmented input, .app-option input { position: absolute; opacity: 0; pointer-events: none; }
 .segmented span, .app-option > span { display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1px solid #35363c; border-radius: 11px; background: #24252a; color: #b9bac0; cursor: pointer; transition: .16s ease; }
 .segmented input:checked + span, .app-option input:checked + span { border-color: #777982; background: #f0f0f2; color: #15161a; box-shadow: 0 5px 20px rgb(0 0 0 / 22%); }

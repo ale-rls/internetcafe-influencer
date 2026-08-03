@@ -156,6 +156,29 @@ test("WebSocket clients route one-seat frames and replace an older matching role
   assert.equal(runtime.router.snapshot().counters.replacedConnections, 1);
 });
 
+test("seven phone seats can register concurrently and route seat 7 frames", async (t) => {
+  const { baseUrl } = await startRuntime(t);
+  const phones = await Promise.all(
+    Array.from({ length: 7 }, (_, index) => connectRole(baseUrl, "phone", index + 1)),
+  );
+  const seatSevenDecoder = await connectRole(baseUrl, "decoder", 7);
+  t.after(() => {
+    for (const phone of phones) phone.close();
+    seatSevenDecoder.close();
+  });
+
+  const seatSevenFrame = nextMessage(seatSevenDecoder);
+  phones[6].send(Buffer.from("seat-seven-camera-jpeg"));
+  assert.equal((await seatSevenFrame).data.toString(), "seat-seven-camera-jpeg");
+
+  const health = await (await fetch(`${baseUrl}/healthz`)).json();
+  assert.equal(Object.keys(health.seats).length, 7);
+  for (let seat = 1; seat <= 7; seat += 1) {
+    assert.equal(health.seats[String(seat)].phone, true);
+  }
+  assert.equal(health.seats["7"].decoder, true);
+});
+
 test("tracking-source packets reach only the matching tracking-sink", async (t) => {
   const { baseUrl } = await startRuntime(t);
   const source = await connectRole(baseUrl, "tracking-source", 1);
@@ -215,7 +238,9 @@ test("primary and local listeners share WebSocket routing and shutdown", async (
   assert.equal(primaryControl.status, 404);
   const localControl = await fetch(`${localBaseUrl}/control/`);
   assert.equal(localControl.status, 200);
-  assert.match(await localControl.text(), /Notification control/);
+  const localControlHtml = await localControl.text();
+  assert.match(localControlHtml, /Notification control/);
+  assert.match(localControlHtml, /data-seat="7"/);
 
   const decoder = await connectRole(localBaseUrl, "decoder");
   const phone = await connectRole(baseUrl, "phone");
@@ -250,7 +275,7 @@ test("primary and local listeners share WebSocket routing and shutdown", async (
     ok: true,
     target: "all",
     deliveredSeats: ["1"],
-    missingSeats: ["2", "3", "4"],
+    missingSeats: ["2", "3", "4", "5", "6", "7"],
   });
   const notificationFrame = await notificationMessage;
   assert.equal(notificationFrame.isBinary, false);
@@ -266,7 +291,7 @@ test("primary and local listeners share WebSocket routing and shutdown", async (
   const invalidNotification = await fetch(`${localBaseUrl}/api/notifications`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ seat: 9, app: "instagram", sender: "x", message: "y" }),
+    body: JSON.stringify({ seat: 8, app: "instagram", sender: "x", message: "y" }),
   });
   assert.equal(invalidNotification.status, 400);
 

@@ -44,10 +44,12 @@ class ParameterManager:
 		if not hasattr(par, 'Seat'):
 			p = page.appendInt('Seat', label='Seat')[0]
 			p.default = p.val = PARAM_DEFAULTS['Seat']
-			p.min = 1
-			p.max = 4
-			p.clampMin = True
-			p.clampMax = True
+		else:
+			p = par.Seat
+		p.min = 1
+		p.max = 7
+		p.clampMin = True
+		p.clampMax = True
 
 		if not hasattr(par, 'Host'):
 			p = page.appendStr('Host', label='Host')[0]

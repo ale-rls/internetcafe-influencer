@@ -18,7 +18,11 @@ const DEFAULT_MEDIAPIPE_DIR = resolve(fileURLToPath(
   new URL("../node_modules/@mediapipe/tasks-vision/", import.meta.url),
 ));
 const MEDIAPIPE_ROUTE_PREFIX = "/vendor/mediapipe/";
-const CONTROL_SEATS = ["1", "2", "3", "4"];
+const MAX_CONTROL_SEATS = 7;
+const CONTROL_SEATS = Array.from(
+  { length: MAX_CONTROL_SEATS },
+  (_, index) => String(index + 1),
+);
 const NOTIFICATION_APPS = new Set(["instagram", "whatsapp"]);
 const MAX_NOTIFICATION_BODY_BYTES = 16 * 1024;
 
@@ -77,7 +81,10 @@ function notificationRequest(body) {
   const message = typeof body?.message === "string" ? body.message.trim() : "";
 
   if (target !== "all" && !CONTROL_SEATS.includes(target)) {
-    throw Object.assign(new Error("seat must be all or a number from 1 to 4"), { statusCode: 400 });
+    throw Object.assign(
+      new Error(`seat must be all or a number from 1 to ${MAX_CONTROL_SEATS}`),
+      { statusCode: 400 },
+    );
   }
   if (!NOTIFICATION_APPS.has(app)) {
     throw Object.assign(new Error("app must be instagram or whatsapp"), { statusCode: 400 });
