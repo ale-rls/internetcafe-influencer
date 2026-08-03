@@ -23,7 +23,7 @@ async function createFaceLandmarker(delegate) {
     minFaceDetectionConfidence: 0.5,
     minFacePresenceConfidence: 0.5,
     minTrackingConfidence: 0.5,
-    outputFaceBlendshapes: false,
+    outputFaceBlendshapes: true,
     outputFacialTransformationMatrixes: false,
   });
 }
@@ -45,7 +45,12 @@ self.addEventListener("message", (event) => {
   const { bitmap, frameId, timestampMs } = event.data;
   try {
     const result = faceLandmarker.detectForVideo(bitmap, timestampMs);
-    const packet = encodeTrackingPacket(frameId, timestampMs, result.faceLandmarks?.[0]);
+    const packet = encodeTrackingPacket(
+      frameId,
+      timestampMs,
+      result.faceLandmarks?.[0],
+      result.faceBlendshapes?.[0]?.categories,
+    );
     self.postMessage({ type: "tracking", packet }, [packet]);
   } catch (error) {
     const packet = encodeTrackingPacket(frameId, timestampMs, undefined);

@@ -192,7 +192,8 @@ changed on the same computer, regenerate the server certificate and update
 The first JSON message on every WebSocket registers one role and seat. Binary
 frames then route `phone -> decoder`, `touch-output -> phone`, and
 `tracking-source -> tracking-sink`. The decoder runs browser MediaPipe in a
-worker and sends versioned Float32 face-landmark packets to TouchDesigner.
+worker and sends versioned Float32 packets containing 478 face landmarks and
+52 named blendshape scores to TouchDesigner.
 
 ## TouchDesigner
 
