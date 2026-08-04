@@ -1,5 +1,9 @@
 # Local HTTPS for phone-camera access
 
+For complete platform-specific instructions, see
+[CERTIFICATE_SETUP.md](CERTIFICATE_SETUP.md), which covers both macOS and
+Windows from IP discovery through phone verification.
+
 The phone page calls `navigator.mediaDevices.getUserMedia()`. Browsers allow
 that API in a secure context: `https://` (or `http://localhost` only). **An HTTP
 URL using a LAN IP address is not a secure context and will not be allowed to
