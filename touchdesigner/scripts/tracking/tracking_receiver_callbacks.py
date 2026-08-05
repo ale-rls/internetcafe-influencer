@@ -77,6 +77,68 @@ def _clear_tracking(dat):
 	_cook_tracking_chops(dat)
 
 
+def _filter_switch(dat):
+	"""Resolve the authoritative Switch TOP for phone navigation."""
+	owner = _parent(dat)
+	path = owner.fetch('filter_switch_path', '', search=False)
+	if path:
+		return owner.op(str(path))
+	return owner.parent().op('filter/switch2')
+
+
+def _filter_state(dat):
+	selector = _filter_switch(dat)
+	if selector is None or not hasattr(selector.par, 'index'):
+		return None
+
+	inputs = list(selector.inputs)
+	count = len(inputs)
+	if count < 1:
+		return None
+
+	index = max(0, min(count - 1, int(selector.par.index.eval())))
+	if int(selector.par.index.eval()) != index:
+		selector.par.index.val = index
+	name = inputs[index].name.replace('_', ' ').strip()
+	return selector, index, count, name
+
+
+def _send_filter_state(dat):
+	state = _filter_state(dat)
+	if state is None:
+		return False
+	_selector, index, count, name = state
+	payload = {
+		'type': 'filter-state',
+		'index': index,
+		'count': count,
+	}
+	if name:
+		payload['name'] = name
+	bytes_sent = dat.sendText(json.dumps(payload))
+	if bytes_sent is not None and bytes_sent < 0:
+		_error(dat, 'filter-state send failed ({})'.format(bytes_sent))
+		return False
+	return True
+
+
+def _handle_filter_step(dat, payload):
+	delta = payload.get('delta')
+	if type(delta) is not int or delta not in (-1, 1):
+		_error(dat, 'invalid filter-step delta')
+		return False
+
+	state = _filter_state(dat)
+	if state is None:
+		_error(dat, 'filter-step ignored: missing filter Switch TOP filter/switch2')
+		return False
+
+	selector, index, count, _name = state
+	selector.par.index.val = (index + delta) % count
+	_send_filter_state(dat)
+	return True
+
+
 def onConnect(dat):
 	dat.store('tracking_registered', False)
 	_clear_tracking(dat)
@@ -106,6 +168,11 @@ def onReceiveText(dat, rowIndex, message):
 	except Exception:
 		return
 
+	if payload.get('type') == 'filter-step':
+		if dat.fetch('tracking_registered', False, search=False):
+			_handle_filter_step(dat, payload)
+		return
+
 	if payload.get('type') != 'hello-ack':
 		return
 	if payload.get('role') != 'tracking-sink' or str(payload.get('seat')) != str(_seat(dat)):
@@ -114,6 +181,7 @@ def onReceiveText(dat, rowIndex, message):
 
 	dat.store('tracking_registered', True)
 	_status(dat, 'connected: tracking-sink seat {}'.format(_seat(dat)), log=True)
+	_send_filter_state(dat)
 	return
 
 

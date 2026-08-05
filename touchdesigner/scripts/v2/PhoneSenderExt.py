@@ -8,6 +8,8 @@ Required child operators:
   - param_exec          Parameter Execute DAT
 """
 
+import json
+
 
 PARAM_DEFAULTS = {
 	'Seat': 1,
@@ -16,7 +18,10 @@ PARAM_DEFAULTS = {
 	'Jpegquality': 0.7,
 	'Outputfps': 10.0,
 	'Active': False,
+	'Liveui': True,
 }
+
+LEGACY_FILTER_PARAMETERS = ('Filterindex', 'Filtercount', 'Filtername')
 
 
 class ParameterManager:
@@ -68,13 +73,27 @@ class ParameterManager:
 			p = page.appendToggle('Active', label='Active')[0]
 			p.default = p.val = PARAM_DEFAULTS['Active']
 
+		if not hasattr(par, 'Liveui'):
+			p = page.appendToggle('Liveui', label='Live UI')[0]
+			p.default = p.val = PARAM_DEFAULTS['Liveui']
+
+		# Remove parameters created by the first filter-control implementation.
+		# Filter state now comes directly from the authoritative Switch TOP.
+		for name in LEGACY_FILTER_PARAMETERS:
+			legacy_par = getattr(par, name, None)
+			if legacy_par is not None:
+				try:
+					legacy_par.destroy()
+				except Exception:
+					pass
+
 	def setup_param_exec(self):
 		param_exec = self.ownerComp.op('param_exec')
 		if param_exec is None:
 			return
 
 		param_exec.par.op = self.ownerComp.path
-		param_exec.par.pars = 'Active Seat Host Port'
+		param_exec.par.pars = 'Active Seat Host Port Liveui'
 		param_exec.par.valuechange = True
 		param_exec.par.custom = True
 		param_exec.par.builtin = False
@@ -85,7 +104,6 @@ class PhoneSenderExt:
 		self.ownerComp = ownerComp
 		self.params = ParameterManager(ownerComp)
 		self.state = 'IDLE'
-
 		self.params.setup()
 		self.params.setup_param_exec()
 
@@ -144,6 +162,36 @@ class PhoneSenderExt:
 
 		self.state = 'IDLE'
 
+	def _registeredWebSocket(self):
+		ws_output = self.ownerComp.op('ws_output')
+		if ws_output is None:
+			return None
+		if not ws_output.fetch('touch_output_registered', False, search=False):
+			return None
+		return ws_output
+
+	def _sendControlMessage(self, payload):
+		ws_output = self._registeredWebSocket()
+		if ws_output is None:
+			return False
+
+		bytes_sent = ws_output.sendText(json.dumps(payload))
+		if bytes_sent is not None and bytes_sent < 0:
+			ws_output.store('touch_output_registered', False)
+			self.ownerComp.store('phone_sender_status', 'control message send failed ({})'.format(bytes_sent))
+			return False
+		return True
+
+	def SendLiveUiState(self):
+		return self._sendControlMessage({
+			'type': 'live-ui-state',
+			'enabled': bool(self.ownerComp.par.Liveui.eval()),
+		})
+
+	def SendControlState(self):
+		"""Publish PhoneSender-owned state after WebSocket registration."""
+		self.SendLiveUiState()
+
 	def OnParameterChange(self, par):
 		if par.name == 'Active':
 			if par.eval():
@@ -153,3 +201,5 @@ class PhoneSenderExt:
 		elif par.name in ('Seat', 'Host', 'Port') and self.state == 'STREAMING':
 			self.Stop()
 			self.Start()
+		elif par.name == 'Liveui':
+			self.SendLiveUiState()

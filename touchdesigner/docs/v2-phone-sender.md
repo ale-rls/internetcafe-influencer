@@ -19,6 +19,23 @@ Create these exact children inside `PhoneSender`:
 
 Attach `PhoneSenderExt` through **Customize Component**, then re-init the
 extension after all exact-name children exist. It creates Seat, Host, Port,
-JPEG Quality, Output FPS, and Active. Each sender defaults to JPEG quality `0.7`
-at a maximum of 10 fps. For multi-phone projects, start with quality `0.6` and
-8 fps per sender, then increase them only if TouchDesigner remains responsive.
+JPEG Quality, Output FPS, Active, and Live UI. Each sender defaults to JPEG
+quality `0.7` at a maximum of 10 fps.
+For multi-phone projects, start with quality `0.6` and 8 fps per sender, then
+increase them only if TouchDesigner remains responsive.
+
+## Live UI
+
+`Liveui` controls the phone's Instagram-style comment overlay and decorative
+chrome. It does not disable the previous/next filter controls. Changing the
+toggle publishes the current state over `ws_output`:
+
+```json
+{"type":"live-ui-state","enabled":true}
+```
+
+After each successful WebSocket registration, the component republishes the
+current Live UI state so the influencer server can refresh the snapshot it
+sends when a phone reconnects. Phone filter requests enter TouchDesigner over
+the existing `SeatInput/ws_tracking` connection instead; see
+[`browser-face-tracking.md`](browser-face-tracking.md#phone-filter-controls).

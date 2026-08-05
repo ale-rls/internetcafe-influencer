@@ -13,6 +13,8 @@ const RECONNECT_MAX_MS = 10_000;
 const NOTIFICATION_DURATION_MS = 5_000;
 const NOTIFICATION_TRANSITION_MS = 320;
 const MAX_ACTIVE_NOTIFICATIONS = 20;
+const MAX_LIVE_COMMENTS = 6;
+const LIVE_UI_TRANSITION_MS = 220;
 
 const params = new URLSearchParams(window.location.search);
 const requestedSeat = params.get("seat");
@@ -29,6 +31,12 @@ const uplinkElement = document.querySelector("#uplink-fps");
 const downlinkElement = document.querySelector("#downlink-fps");
 const notificationRegion = document.querySelector("#notification-region");
 const notificationTemplate = document.querySelector("#notification-template");
+const liveUi = document.querySelector("#live-ui");
+const liveCommentFeed = document.querySelector("#live-comment-feed");
+const liveCommentTemplate = document.querySelector("#live-comment-template");
+const filterStateElement = document.querySelector("#filter-state");
+const previousFilterButton = document.querySelector("#previous-filter");
+const nextFilterButton = document.querySelector("#next-filter");
 document.querySelector("#seat").textContent = `Seat ${seat}`;
 
 const NOTIFICATION_APPS = {
@@ -51,6 +59,8 @@ let newestFrame;
 let decoding = false;
 let framesUp = 0;
 let framesDown = 0;
+let liveUiEnabled = true;
+let clearLiveCommentsTimer;
 const notificationTimers = new Map();
 
 function setStatus(message, kind = "waiting") {
@@ -143,15 +153,103 @@ function receiveControlMessage(rawMessage) {
   } catch {
     return;
   }
-  if (payload?.type !== "notification") return;
-  if (!NOTIFICATION_APPS[payload.app]) return;
-  if (typeof payload.sender !== "string" || typeof payload.message !== "string") return;
+  switch (payload?.type) {
+    case "notification":
+      if (!NOTIFICATION_APPS[payload.app]) return;
+      if (typeof payload.sender !== "string" || typeof payload.message !== "string") return;
+      showNotification({
+        app: payload.app,
+        sender: payload.sender.slice(0, 60),
+        message: payload.message.slice(0, 280),
+      });
+      break;
+    case "live-comment":
+      receiveLiveComment(payload);
+      break;
+    case "live-ui-state":
+      if (typeof payload.enabled === "boolean") setLiveUiEnabled(payload.enabled);
+      break;
+    case "filter-state":
+      receiveFilterState(payload);
+      break;
+    default:
+      break;
+  }
+}
 
-  showNotification({
-    app: payload.app,
-    sender: payload.sender.slice(0, 60),
-    message: payload.message.slice(0, 280),
+function receiveLiveComment(payload) {
+  if (!liveUiEnabled) return;
+  if (typeof payload.id !== "string" || typeof payload.sender !== "string" || typeof payload.message !== "string") return;
+  if (!Number.isFinite(payload.receivedAt)) return;
+  if ([...liveCommentFeed.children].some(({ dataset }) => dataset.commentId === payload.id)) return;
+
+  showLiveComment({
+    id: payload.id.slice(0, 120),
+    sender: payload.sender.trim().slice(0, 60),
+    message: payload.message.trim().slice(0, 500),
   });
+}
+
+function showLiveComment(comment) {
+  if (!comment.sender || !comment.message) return;
+
+  while (liveCommentFeed.children.length >= MAX_LIVE_COMMENTS) {
+    liveCommentFeed.firstElementChild.remove();
+  }
+
+  const element = liveCommentTemplate.content.firstElementChild.cloneNode(true);
+  const avatar = element.querySelector("[data-comment-avatar]");
+  element.dataset.commentId = comment.id;
+  avatar.textContent = senderInitials(comment.sender);
+  avatar.style.setProperty("--avatar-hue", String(avatarHue(comment.sender)));
+  element.querySelector("[data-comment-sender]").textContent = comment.sender;
+  element.querySelector("[data-comment-message]").textContent = comment.message;
+  liveCommentFeed.append(element);
+  window.requestAnimationFrame(() => element.classList.add("is-visible"));
+}
+
+function senderInitials(sender) {
+  const parts = sender.trim().split(/\s+/).filter(Boolean);
+  if (parts.length > 1) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  return sender.slice(0, 2).toUpperCase();
+}
+
+function avatarHue(sender) {
+  let hash = 0;
+  for (const character of sender) hash = (hash * 31 + character.codePointAt(0)) >>> 0;
+  return hash % 360;
+}
+
+function setLiveUiEnabled(enabled) {
+  liveUiEnabled = enabled;
+  liveUi.classList.toggle("is-disabled", !enabled);
+  liveUi.setAttribute("aria-hidden", String(!enabled));
+  window.clearTimeout(clearLiveCommentsTimer);
+
+  if (enabled) {
+    liveCommentFeed.replaceChildren();
+    return;
+  }
+
+  for (const comment of liveCommentFeed.children) {
+    comment.classList.remove("is-visible");
+    comment.classList.add("is-leaving");
+  }
+  clearLiveCommentsTimer = window.setTimeout(() => liveCommentFeed.replaceChildren(), LIVE_UI_TRANSITION_MS);
+}
+
+function receiveFilterState(payload) {
+  if (!Number.isInteger(payload.index) || payload.index < 0) return;
+  if (!Number.isInteger(payload.count) || payload.count < 1 || payload.index >= payload.count) return;
+  const name = typeof payload.name === "string" ? payload.name.trim().slice(0, 80) : "";
+  filterStateElement.textContent = name || `Filter ${payload.index + 1} of ${payload.count}`;
+  filterStateElement.hidden = false;
+}
+
+function requestFilterStep(delta) {
+  if (delta !== -1 && delta !== 1) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: "filter-step", delta }));
 }
 
 function showNotification(notification) {
@@ -363,6 +461,7 @@ window.setInterval(() => {
 window.addEventListener("beforeunload", () => {
   window.clearInterval(captureTimer);
   window.clearTimeout(reconnectTimer);
+  window.clearTimeout(clearLiveCommentsTimer);
   for (const timers of notificationTimers.values()) {
     window.clearTimeout(timers.expiryTimer);
     window.clearTimeout(timers.transitionTimer);
@@ -373,4 +472,6 @@ window.addEventListener("beforeunload", () => {
 
 resizeOutput();
 startButton.addEventListener("click", startCamera);
+previousFilterButton.addEventListener("click", () => requestFilterStep(-1));
+nextFilterButton.addEventListener("click", () => requestFilterStep(1));
 connect();

@@ -4,6 +4,7 @@ import { createServer as createHttpsServer } from "node:https";
 import { pathToFileURL } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { loadConfig } from "./config.js";
+import { CommentRelayReceiver } from "./comment-relay.js";
 import { FrameRouter } from "./frame-router.js";
 import { createQrPage } from "./qr.js";
 import { createRequestHandler } from "./static.js";
@@ -15,6 +16,12 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
   }
   const router = new FrameRouter(config);
   router.logger = logger;
+  const commentRelay = new CommentRelayReceiver({
+    sharedToken: config.relaySharedToken,
+    helloTimeoutMs: config.helloTimeoutMs,
+    broadcastComment: (comment) => router.broadcastLiveComment(comment),
+    logger,
+  });
   let shuttingDown = false;
   const localHttpEnabled = config.localHttpEnabled ?? false;
   const localHttpHost = config.localHttpHost ?? "127.0.0.1";
@@ -31,8 +38,9 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
       ? { enabled: true, host: localHttpHost, port: localServer?.address()?.port ?? config.localHttpPort }
       : { enabled: false },
     phoneBaseUrl: config.phoneBaseUrl,
-    websocketPaths: ["/", "/stream"],
+    websocketPaths: ["/", "/stream", "/comments/relay"],
     ...router.snapshot(),
+    ...commentRelay.snapshot(),
   });
   const requestHandlerOptions = {
     publicDir: config.publicDir,
@@ -53,6 +61,7 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
   const localHandler = createRequestHandler({ ...requestHandlerOptions, controlEnabled: true });
   const localServer = localHttpEnabled ? createHttpServer(localHandler) : null;
   const webSockets = new WebSocketServer({ noServer: true, maxPayload: config.maxPayloadBytes });
+  const commentRelayWebSockets = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 });
 
   function attachUpgradeHandler(httpServer) {
     httpServer.on("upgrade", (request, socket, head) => {
@@ -63,13 +72,14 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
         socket.destroy();
         return;
       }
-      if (pathname !== "/" && pathname !== "/stream") {
+      if (pathname !== "/" && pathname !== "/stream" && pathname !== "/comments/relay") {
         socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
         socket.destroy();
         return;
       }
-      webSockets.handleUpgrade(request, socket, head, (client) => {
-        webSockets.emit("connection", client, request);
+      const target = pathname === "/comments/relay" ? commentRelayWebSockets : webSockets;
+      target.handleUpgrade(request, socket, head, (client) => {
+        target.emit("connection", client, request);
       });
     });
   }
@@ -81,9 +91,14 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
     socket.on("pong", () => { socket.isAlive = true; });
     router.attach(socket);
   });
+  commentRelayWebSockets.on("connection", (socket) => {
+    socket.isAlive = true;
+    socket.on("pong", () => { socket.isAlive = true; });
+    commentRelay.attach(socket);
+  });
 
   const heartbeat = setInterval(() => {
-    for (const socket of webSockets.clients) {
+    for (const socket of [...webSockets.clients, ...commentRelayWebSockets.clients]) {
       if (socket.isAlive === false) {
         socket.terminate();
         continue;
@@ -126,8 +141,13 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
     shuttingDown = true;
     clearInterval(heartbeat);
     router.closeAll();
+    commentRelay.closeAll();
     for (const socket of webSockets.clients) socket.terminate();
-    await new Promise((resolve) => webSockets.close(() => resolve()));
+    for (const socket of commentRelayWebSockets.clients) socket.terminate();
+    await Promise.all([
+      new Promise((resolve) => webSockets.close(() => resolve())),
+      new Promise((resolve) => commentRelayWebSockets.close(() => resolve())),
+    ]);
     const closeServer = (httpServer) => {
       if (!httpServer?.listening) return Promise.resolve();
       return new Promise((resolve, reject) => httpServer.close((error) => error ? reject(error) : resolve()));
@@ -135,7 +155,18 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
     await Promise.all([closeServer(server), closeServer(localServer)]);
   }
 
-  return { server, localServer, webSockets, router, getHealth, start, close, config };
+  return {
+    server,
+    localServer,
+    webSockets,
+    commentRelayWebSockets,
+    router,
+    commentRelay,
+    getHealth,
+    start,
+    close,
+    config,
+  };
 }
 
 async function main() {

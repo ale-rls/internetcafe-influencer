@@ -10,6 +10,29 @@
   <body>
     <canvas id="output" aria-label="Processed camera output"></canvas>
 
+    <section id="live-ui" class="live-ui" aria-label="Live comments">
+      <div class="live-chrome" aria-hidden="true">
+        <span class="live-badge"><i></i> Live</span>
+        <span id="filter-state" class="filter-state" hidden></span>
+      </div>
+      <div class="live-comment-shade" aria-hidden="true"></div>
+      <div id="live-comment-feed" class="live-comment-feed" aria-live="polite" aria-relevant="additions"></div>
+    </section>
+
+    <button id="previous-filter" class="filter-step filter-step--previous" type="button" aria-label="Previous filter">
+      <span aria-hidden="true">&#8249;</span>
+    </button>
+    <button id="next-filter" class="filter-step filter-step--next" type="button" aria-label="Next filter">
+      <span aria-hidden="true">&#8250;</span>
+    </button>
+
+    <template id="live-comment-template">
+      <article class="live-comment">
+        <div data-comment-avatar class="live-comment-avatar" aria-hidden="true"></div>
+        <p><strong data-comment-sender></strong> <span data-comment-message></span></p>
+      </article>
+    </template>
+
     <section id="notification-region" class="notification-region" aria-live="assertive"></section>
     <template id="notification-template">
       <article class="phone-notification" aria-label="Notification">
