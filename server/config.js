@@ -64,5 +64,21 @@ export function loadConfig(env = process.env) {
     maxBufferedBytes: readPositiveInteger(env.WS_MAX_BUFFERED_BYTES, 1024 * 1024, "WS_MAX_BUFFERED_BYTES"),
     helloTimeoutMs: readPositiveInteger(env.WS_HELLO_TIMEOUT_MS, 5_000, "WS_HELLO_TIMEOUT_MS"),
     heartbeatIntervalMs: readPositiveInteger(env.WS_HEARTBEAT_INTERVAL_MS, 15_000, "WS_HEARTBEAT_INTERVAL_MS"),
+    relaySharedToken: env.RELAY_SHARED_TOKEN?.trim() || null,
+    filterStepIntervalMs: readPositiveInteger(
+      env.FILTER_STEP_INTERVAL_MS,
+      150,
+      "FILTER_STEP_INTERVAL_MS",
+    ),
+    commentReplayLimit: readPositiveInteger(
+      env.COMMENT_REPLAY_LIMIT,
+      6,
+      "COMMENT_REPLAY_LIMIT",
+    ),
+    commentReplayMaxAgeMs: readPositiveInteger(
+      env.COMMENT_REPLAY_MAX_AGE_MS,
+      120_000,
+      "COMMENT_REPLAY_MAX_AGE_MS",
+    ),
   };
 }

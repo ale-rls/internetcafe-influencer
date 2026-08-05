@@ -17,6 +17,10 @@ def _status(dat, message, log=False):
 		debug('[phone_sender seat {}] {}'.format(_seat(dat), message))
 
 
+def _extension(dat):
+	return getattr(_base(dat).ext, 'PhoneSenderExt', None)
+
+
 def onConnect(dat):
 	dat.store('touch_output_registered', False)
 	hello = json.dumps({
@@ -52,6 +56,9 @@ def onReceiveText(dat, rowIndex, message):
 
 		dat.store('touch_output_registered', True)
 		_status(dat, 'connected', log=True)
+		extension = _extension(dat)
+		if extension is not None:
+			extension.SendControlState()
 	elif payload.get('type') == 'error':
 		dat.store('touch_output_registered', False)
 		_status(dat, 'server error: {}'.format(payload.get('message', message)), log=True)

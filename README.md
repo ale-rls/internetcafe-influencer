@@ -5,6 +5,7 @@ Local seven-seat implementation of this round trip:
 ```text
 phone camera -> terminal WebSocket server -> TouchDesigner Web Render TOP
              <- terminal WebSocket server <- processed TouchDesigner TOP
+commenter    -> terminal comment relay    -> every connected influencer phone
 ```
 
 The terminal process owns the web app, QR page, HTTPS, connection registry,
@@ -108,6 +109,9 @@ TLS_KEY_FILE=./certs/camera-windows-key.pem
 LOCAL_HTTP_ENABLED=true
 LOCAL_HTTP_HOST=127.0.0.1
 LOCAL_HTTP_PORT=8080
+
+# Set this to the same non-empty value on the commenter station.
+RELAY_SHARED_TOKEN=replace-with-an-installation-secret
 ```
 
 `PHONE_BASE_URL` must contain exactly the same IP address that was included in
@@ -188,12 +192,100 @@ changed on the same computer, regenerate the server certificate and update
 - `http://127.0.0.1:8080/control/` - computer-only notification controls
 - `/healthz` - connection, routing, and frame counters
 - `/stream` - binary WebSocket endpoint
+- `/comments/relay` - commenter-station WebSocket receiver
 
-The first JSON message on every WebSocket registers one role and seat. Binary
-frames then route `phone -> decoder`, `touch-output -> phone`, and
+The first JSON message on every `/stream` WebSocket registers one role and seat.
+Binary frames then route `phone -> decoder`, `touch-output -> phone`, and
 `tracking-source -> tracking-sink`. The decoder runs browser MediaPipe in a
 worker and sends versioned Float32 packets containing 478 face landmarks and
 52 named blendshape scores to TouchDesigner.
+
+## Live comments and filter controls
+
+The separate commenter server connects directly to:
+
+```dotenv
+INFLUENCER_WS_URL=wss://<INFLUENCER-IP>:8443/comments/relay
+COMMENTER_STATION_ID=commenter-1
+RELAY_SHARED_TOKEN=replace-with-the-same-installation-secret
+```
+
+`RELAY_SHARED_TOKEN` is optional. Leave it blank on both servers to disable
+the check, or set the same non-empty value on both. Do not put the token in a
+phone URL or client-side page.
+
+The commenter sends this hello as its first text frame. `token` is omitted
+when no shared token is configured:
+
+```json
+{
+  "protocol": "internetcafe.comments",
+  "version": 1,
+  "type": "hello",
+  "role": "comment-relay",
+  "stationId": "commenter-1",
+  "token": "optional-shared-secret"
+}
+```
+
+It then sends the version-1 canonical `comment` envelopes documented in the
+commenter repository. The influencer validates them and broadcasts a compact
+phone message over each phone's existing `/stream` connection:
+
+```json
+{
+  "type": "live-comment",
+  "id": "comment-123",
+  "sender": "Guest10280",
+  "message": "that filter is wild",
+  "receivedAt": 1785840000123
+}
+```
+
+Comments are ephemeral: neither server nor phone keeps a durable history. The
+server retains only the latest six accepted comments in memory for two minutes
+so a newly connected or reloaded phone can rebuild the current feed. Comments
+received while a seat's Live UI is disabled are not replayed after it is
+re-enabled. `COMMENT_REPLAY_LIMIT` and `COMMENT_REPLAY_MAX_AGE_MS` override the
+defaults. The receiver does not send an application-level acknowledgement;
+the commenter continues to treat a successful WebSocket send as acceptance.
+`/healthz` reports relay status under `commentRelay` and accepted, rejected,
+and immediate phone-delivery counters under `comments`.
+
+The influencer certificate is locally signed, so the commenter computer must
+also trust the mkcert root CA. Copy only the influencer installation's public
+`rootCA.pem` to the commenter computer. One reliable Node.js launch method is:
+
+```powershell
+$env:NODE_EXTRA_CA_CERTS = "C:\path\to\influencer-rootCA.pem"
+pnpm start
+```
+
+```sh
+NODE_EXTRA_CA_CERTS=/path/to/influencer-rootCA.pem pnpm start
+```
+
+Set this before starting Node; changing it inside a running process has no
+effect. Never copy the CA private key or HTTPS server private key. The
+certificate must include the exact IP used by `INFLUENCER_WS_URL`.
+
+Phones are lightweight displays and control surfaces. Visitors initiate filter
+changes on the phone, TouchDesigner applies them to the seat's Switch TOP, and
+the influencer server owns seat routing and the latest state snapshot:
+
+```text
+phone -- {"type":"filter-step","delta":-1|1} --> server --> same-seat ws_tracking
+phone <-- {"type":"filter-state","index":2,"count":5,"name":"Liquid Face"} -- ws_tracking
+phone <-- {"type":"live-ui-state","enabled":true} ----------------------------- TD
+```
+
+`filter-step` is limited to one accepted request per seat every 150 ms. The
+server caches `filter-state` and `live-ui-state` per seat and sends the latest
+values after that seat's phone reconnects. Disabling Live UI clears the
+phone's visible comment feed; comments received while it is disabled are not
+queued. Filter arrows remain available because Live UI is not a master switch
+for all phone controls. Both arrow buttons call `requestFilterStep(delta)`, so
+a later swipe gesture can use the same protocol.
 
 ## TouchDesigner
 

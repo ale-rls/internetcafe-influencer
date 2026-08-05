@@ -168,3 +168,51 @@ test("FrameRouter sends notification text only to the requested phone seats", ()
     },
   );
 });
+
+test("FrameRouter replays a bounded live-comment snapshot when a phone connects", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  router.broadcastLiveComment({
+    id: "comment-before-phone",
+    sender: "Guest10280",
+    message: "show me after connect",
+    receivedAt: 1_785_840_000_123,
+  });
+
+  const phone = new FakeSocket();
+  register(router, phone, "phone", "1");
+
+  assert.equal(phone.sent.length, 2);
+  assert.deepEqual(JSON.parse(phone.sent.at(-1).data), {
+    type: "live-comment",
+    id: "comment-before-phone",
+    sender: "Guest10280",
+    message: "show me after connect",
+    receivedAt: 1_785_840_000_123,
+  });
+  assert.equal(router.snapshot().counters.replayedLiveComments, 1);
+});
+
+test("FrameRouter does not replay comments received while Live UI is disabled", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const touchOutput = new FakeSocket();
+  register(router, touchOutput, "touch-output", "1");
+  touchOutput.emit("message", Buffer.from(JSON.stringify({
+    type: "live-ui-state",
+    enabled: false,
+  })), false);
+
+  router.broadcastLiveComment({
+    id: "comment-while-hidden",
+    sender: "Guest10280",
+    message: "do not replay me",
+    receivedAt: 1_785_840_000_123,
+  });
+
+  const phone = new FakeSocket();
+  register(router, phone, "phone", "1");
+  assert.deepEqual(phone.sent.map(({ data }) => JSON.parse(data)), [
+    { type: "hello-ack", role: "phone", seat: "1" },
+    { type: "live-ui-state", enabled: false },
+  ]);
+  assert.equal(router.snapshot().counters.replayedLiveComments, 0);
+});

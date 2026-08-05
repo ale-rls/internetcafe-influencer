@@ -11,8 +11,10 @@ pnpm test
 
 The tests cover the public QR URL contract, QR rendering boundary, static and
 health routes, one-seat WebSocket routing/replacement, tracking packet encoding
-and routing, MediaPipe asset delivery, and the router's backpressure-drop
-policy. They do not need a camera, a real QR scan, or TouchDesigner.
+and routing, MediaPipe asset delivery, commenter relay validation/broadcasting,
+seat-specific Live UI and filter-state snapshots, filter-step rate limiting,
+and the router's backpressure-drop policy. They do not need a camera, a real QR
+scan, a commenter station, or TouchDesigner.
 
 ## Desktop two-client smoke test
 

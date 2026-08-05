@@ -24,15 +24,33 @@ function blankCounters() {
     droppedBackpressure: 0,
     rejectedMessages: 0,
     replacedConnections: 0,
+    forwardedControlMessages: 0,
+    droppedControlNoDestination: 0,
+    rateLimitedFilterSteps: 0,
+    replayedLiveComments: 0,
   };
 }
 
 export class FrameRouter {
-  constructor({ maxBufferedBytes = 1024 * 1024, helloTimeoutMs = 5_000, logger = console } = {}) {
+  constructor({
+    maxBufferedBytes = 1024 * 1024,
+    helloTimeoutMs = 5_000,
+    filterStepIntervalMs = 150,
+    commentReplayLimit = 6,
+    commentReplayMaxAgeMs = 120_000,
+    logger = console,
+  } = {}) {
     this.maxBufferedBytes = maxBufferedBytes;
     this.helloTimeoutMs = helloTimeoutMs;
+    this.filterStepIntervalMs = filterStepIntervalMs;
+    this.commentReplayLimit = commentReplayLimit;
+    this.commentReplayMaxAgeMs = commentReplayMaxAgeMs;
     this.logger = logger;
     this.seats = new Map();
+    this.controlStates = new Map();
+    this.lastFilterStepBySeat = new Map();
+    this.commentReplayAfterBySeat = new Map();
+    this.recentComments = [];
     this.clients = new Map();
     this.counters = blankCounters();
   }
@@ -100,10 +118,25 @@ export class FrameRouter {
       return this.reject(client.socket, "invalid message JSON");
     }
 
-    if (client.role !== "phone" || message?.type !== "camera-info") {
-      return this.reject(client.socket, "only phone camera-info text is allowed after hello");
+    if (client.role === "phone" && message?.type === "camera-info") {
+      return this.handleCameraInfo(client, message);
     }
+    if (client.role === "phone" && message?.type === "filter-step") {
+      return this.handleFilterStep(client, message);
+    }
+    if (client.role === "touch-output" && message?.type === "live-ui-state") {
+      return this.handleLiveUiState(client, message);
+    }
+    if (
+      (client.role === "tracking-sink" || client.role === "touch-output")
+      && message?.type === "filter-state"
+    ) {
+      return this.handleFilterState(client, message);
+    }
+    return this.reject(client.socket, `${client.role} cannot send this text message`);
+  }
 
+  handleCameraInfo(client, message) {
     const sourceWidth = Number(message.source?.width);
     const sourceHeight = Number(message.source?.height);
     if (
@@ -150,6 +183,80 @@ export class FrameRouter {
     };
   }
 
+  handleFilterStep(client, message) {
+    if (message.delta !== -1 && message.delta !== 1) {
+      return this.reject(client.socket, "filter-step delta must be -1 or 1");
+    }
+    const now = Date.now();
+    const previousStepAt = this.lastFilterStepBySeat.get(client.seat);
+    if (previousStepAt && now - previousStepAt < this.filterStepIntervalMs) {
+      this.counters.rateLimitedFilterSteps += 1;
+      return;
+    }
+    this.lastFilterStepBySeat.set(client.seat, now);
+    this.sendTextToRole(client.seat, "tracking-sink", { type: "filter-step", delta: message.delta });
+  }
+
+  handleLiveUiState(client, message) {
+    if (typeof message.enabled !== "boolean") {
+      return this.reject(client.socket, "live-ui-state enabled must be boolean");
+    }
+    const state = this.controlState(client.seat);
+    const previouslyEnabled = state.liveUi?.enabled;
+    state.liveUi = { type: "live-ui-state", enabled: message.enabled };
+    if (previouslyEnabled === false && message.enabled) {
+      this.commentReplayAfterBySeat.set(client.seat, Date.now());
+    }
+    this.sendTextToRole(client.seat, "phone", state.liveUi);
+  }
+
+  handleFilterState(client, message) {
+    const index = message.index;
+    const count = message.count;
+    const validName = message.name === undefined
+      || (typeof message.name === "string" && message.name.length <= 80);
+    if (
+      !Number.isSafeInteger(index)
+      || !Number.isSafeInteger(count)
+      || count < 1
+      || index < 0
+      || index >= count
+      || !validName
+    ) {
+      return this.reject(client.socket, "filter-state requires a valid index, count, and optional name");
+    }
+    const state = this.controlState(client.seat);
+    state.filter = {
+      type: "filter-state",
+      index,
+      count,
+      ...(message.name ? { name: message.name } : {}),
+    };
+    this.sendTextToRole(client.seat, "phone", state.filter);
+  }
+
+  controlState(seat) {
+    let state = this.controlStates.get(seat);
+    if (!state) {
+      state = {};
+      this.controlStates.set(seat, state);
+    }
+    return state;
+  }
+
+  sendTextToRole(seat, role, message) {
+    const target = this.seats.get(String(seat))?.get(role)?.socket;
+    if (!target || target.readyState !== WebSocket.OPEN) {
+      this.counters.droppedControlNoDestination += 1;
+      return false;
+    }
+    target.send(JSON.stringify(message), { binary: false }, (error) => {
+      if (error) this.logger.warn?.(`[ws] control send failed for seat ${seat}: ${error.message}`);
+    });
+    this.counters.forwardedControlMessages += 1;
+    return true;
+  }
+
   register(client, rawData) {
     let hello;
     try {
@@ -184,6 +291,12 @@ export class FrameRouter {
     client.seat = seat;
     seatClients.set(role, client);
     client.socket.send(JSON.stringify({ type: "hello-ack", role, seat }));
+    if (role === "phone") {
+      const state = this.controlStates.get(seat);
+      if (state?.liveUi) this.sendTextToRole(seat, "phone", state.liveUi);
+      if (state?.filter) this.sendTextToRole(seat, "phone", state.filter);
+      this.replayRecentComments(seat);
+    }
     this.logger.info?.(`[ws] ${role} connected for seat ${seat}`);
   }
 
@@ -220,6 +333,56 @@ export class FrameRouter {
     return { deliveredSeats, missingSeats };
   }
 
+  broadcastLiveComment(comment) {
+    const payload = this.liveCommentPayload(comment);
+    const acceptedAt = Date.now();
+    this.recentComments.push({ comment: structuredClone(comment), acceptedAt });
+    this.pruneRecentComments(acceptedAt);
+    let delivered = 0;
+    for (const [seat, clients] of this.seats) {
+      const target = clients.get("phone")?.socket;
+      if (!target || target.readyState !== WebSocket.OPEN) continue;
+      target.send(payload, { binary: false }, (error) => {
+        if (error) this.logger.warn?.(`[comments] phone send failed for seat ${seat}: ${error.message}`);
+      });
+      delivered += 1;
+    }
+    return delivered;
+  }
+
+  liveCommentPayload(comment) {
+    return JSON.stringify({
+      type: "live-comment",
+      id: comment.id,
+      sender: comment.sender,
+      message: comment.message,
+      receivedAt: comment.receivedAt,
+    });
+  }
+
+  pruneRecentComments(now = Date.now()) {
+    const cutoff = now - this.commentReplayMaxAgeMs;
+    this.recentComments = this.recentComments
+      .filter(({ acceptedAt }) => acceptedAt >= cutoff)
+      .slice(-this.commentReplayLimit);
+  }
+
+  replayRecentComments(seat) {
+    const state = this.controlStates.get(seat);
+    if (state?.liveUi?.enabled === false) return 0;
+
+    this.pruneRecentComments();
+    const replayAfter = this.commentReplayAfterBySeat.get(seat) ?? 0;
+    let replayed = 0;
+    for (const entry of this.recentComments) {
+      if (entry.acceptedAt < replayAfter) continue;
+      if (!this.sendTextToRole(seat, "phone", JSON.parse(this.liveCommentPayload(entry.comment)))) break;
+      replayed += 1;
+    }
+    this.counters.replayedLiveComments += replayed;
+    return replayed;
+  }
+
   unregister(client) {
     this.clients.delete(client.socket);
     if (!client.role || !client.seat) return;
@@ -231,6 +394,7 @@ export class FrameRouter {
   snapshot() {
     const seats = {};
     const cameras = {};
+    const controlStates = {};
     for (const [seat, clients] of this.seats) {
       seats[seat] = Object.fromEntries(
         [...ROLES].map((role) => [role, clients.get(role)?.socket.readyState === WebSocket.OPEN]),
@@ -238,11 +402,15 @@ export class FrameRouter {
       const phone = clients.get("phone");
       if (phone?.camera) cameras[seat] = structuredClone(phone.camera);
     }
+    for (const [seat, state] of this.controlStates) {
+      controlStates[seat] = structuredClone(state);
+    }
     return {
       connections: this.clients.size,
       registeredConnections: [...this.seats.values()].reduce((sum, clients) => sum + clients.size, 0),
       seats,
       cameras,
+      controlStates,
       counters: { ...this.counters },
     };
   }
@@ -251,5 +419,9 @@ export class FrameRouter {
     for (const client of this.clients.values()) client.socket.close(code, reason);
     this.clients.clear();
     this.seats.clear();
+    this.controlStates.clear();
+    this.lastFilterStepBySeat.clear();
+    this.commentReplayAfterBySeat.clear();
+    this.recentComments = [];
   }
 }

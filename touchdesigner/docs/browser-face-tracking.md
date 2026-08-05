@@ -41,6 +41,36 @@ Set `ws_tracking` Active on. Its callback registers as `tracking-sink` for seat
 op('ws_tracking').parent().store('tracking_seat', 2)
 ```
 
+### Phone filter controls
+
+The same `ws_tracking` connection also receives the phone's tiny text control
+messages alongside binary tracking packets. The server routes a same-seat
+arrow press as:
+
+```json
+{"type":"filter-step","delta":1}
+```
+
+By default, `tracking_receiver_callbacks` controls `switch2` inside the sibling
+Base named `filter` (`../filter/switch2` from `SeatInput`). Connect the available
+filter TOPs to that switch in phone navigation order. If it has another name or
+location, store a relative path on `SeatInput` once:
+
+```python
+op('/project1/SeatInput').store('filter_switch_path', '../filter/switch2')
+```
+
+The callback accepts only `-1` or `1`, wraps the Switch TOP's `Index`, infers
+the count from connected inputs, and returns the selected input name to the
+phone through the same WebSocket:
+
+```json
+{"type":"filter-state","index":2,"count":5,"name":"Liquid Face"}
+```
+
+No additional WebSocket DAT is required. If the switch cannot be resolved,
+`tracking_errors` and the `tracking_error` storage entry report the problem.
+
 Set the Web Render TOP and the downstream image-processing TOP chain to
 `720x1280`. Do not stretch a square intermediate into the portrait output; the
 browser landmarks are normalized against this exact portrait frame. The phone
