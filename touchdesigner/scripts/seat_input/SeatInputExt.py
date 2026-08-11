@@ -20,6 +20,7 @@ PARAM_DEFAULTS = {
 	'Seat': 1,
 	'Host': '127.0.0.1',
 	'Port': 8080,
+	'Transport': 'jpeg',
 	'Active': False,
 }
 
@@ -63,6 +64,18 @@ class ParameterManager:
 			p.clampMin = True
 			p.clampMax = True
 
+		if not hasattr(par, 'Transport'):
+			p = page.appendMenu('Transport', label='Transport')[0]
+			p.menuNames = ['jpeg', 'webrtc']
+			p.menuLabels = ['JPEG', 'WebRTC']
+			p.default = p.val = PARAM_DEFAULTS['Transport']
+		else:
+			p = par.Transport
+			p.menuNames = ['jpeg', 'webrtc']
+			p.menuLabels = ['JPEG', 'WebRTC']
+			if p.eval() not in p.menuNames:
+				p.val = PARAM_DEFAULTS['Transport']
+
 		if not hasattr(par, 'Active'):
 			p = page.appendToggle('Active', label='Active')[0]
 			p.default = p.val = PARAM_DEFAULTS['Active']
@@ -77,7 +90,7 @@ class ParameterManager:
 			return
 
 		param_exec.par.op = self.ownerComp.path
-		param_exec.par.pars = 'Active Seat Host Port Reload'
+		param_exec.par.pars = 'Active Seat Host Port Transport Reload'
 		param_exec.par.valuechange = True
 		param_exec.par.custom = True
 		param_exec.par.builtin = False
@@ -110,10 +123,11 @@ class SeatInputExt:
 		return [name for name, operator in operators.items() if operator is None]
 
 	def _web_url(self):
-		return 'http://{}:{}/decoder/?seat={}'.format(
+		return 'http://{}:{}/decoder/?seat={}&transport={}'.format(
 			self.ownerComp.par.Host.eval(),
 			int(self.ownerComp.par.Port.eval()),
 			int(self.ownerComp.par.Seat.eval()),
+			self.ownerComp.par.Transport.eval(),
 		)
 
 	def Start(self):
@@ -184,7 +198,7 @@ class SeatInputExt:
 				self.Start()
 			else:
 				self.Stop()
-		elif par.name in ('Seat', 'Host', 'Port') and self.state == 'RUNNING':
+		elif par.name in ('Seat', 'Host', 'Port', 'Transport') and self.state == 'RUNNING':
 			self.Stop()
 			self.Start()
 

@@ -4,7 +4,7 @@
 import time
 
 
-DEFAULT_OUTPUT_FPS = 10.0
+DEFAULT_OUTPUT_FPS = 24.0
 
 
 def _should_throttle(now, last_send, send_interval_seconds):
@@ -21,7 +21,7 @@ def _should_throttle(now, last_send, send_interval_seconds):
 def _send_interval_seconds():
 	output_fps_par = getattr(me.parent().par, 'Outputfps', None)
 	output_fps = float(output_fps_par.eval()) if output_fps_par is not None else DEFAULT_OUTPUT_FPS
-	output_fps = max(1.0, min(30.0, output_fps))
+	output_fps = max(1.0, min(DEFAULT_OUTPUT_FPS, output_fps))
 	return 1.0 / output_fps
 
 

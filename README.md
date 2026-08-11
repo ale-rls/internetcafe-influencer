@@ -10,8 +10,8 @@ commenter    -> terminal comment relay    -> every connected influencer phone
 
 The terminal process owns the web app, QR page, HTTPS, connection registry,
 and binary frame routing. TouchDesigner remains an image processor and a
-WebSocket client. Frames are 720x1280 portrait JPEGs; the phone uplink targets 23 fps,
-while the v2 TouchDesigner return sender defaults to 10 fps. Backpressured
+WebSocket client. Frames are 720x1280 portrait JPEGs; phone capture, WebRTC
+return, and the v2 TouchDesigner return sender are capped at 24 fps. Backpressured
 frames are dropped instead of queued.
 
 With TLS configured, the process starts two listeners that share the same
@@ -214,7 +214,7 @@ In this mode the phone sends its camera track directly to the decoder page.
 The decoder page performs the 720x1280 crop/scale for the existing Web Render
 TOP and continues to run MediaPipe tracking. TouchDesigner's existing
 `touch-output` JPEG sender is unchanged: return JPEGs are routed to the decoder
-page, painted to a canvas, captured at 10 fps, and returned to the phone as a
+page, painted to a canvas, captured at up to 24 fps, and returned to the phone as a
 WebRTC video track. The phone WebSocket remains connected for signaling,
 comments, filter controls, and diagnostics.
 

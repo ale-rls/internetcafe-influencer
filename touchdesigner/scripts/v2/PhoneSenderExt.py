@@ -16,7 +16,7 @@ PARAM_DEFAULTS = {
 	'Host': '127.0.0.1',
 	'Port': 8080,
 	'Jpegquality': 0.7,
-	'Outputfps': 10.0,
+	'Outputfps': 24.0,
 	'Active': False,
 	'Liveui': True,
 }
@@ -66,7 +66,15 @@ class ParameterManager:
 		if not hasattr(par, 'Outputfps'):
 			p = page.appendFloat('Outputfps', label='Output FPS')[0]
 			p.default = p.val = PARAM_DEFAULTS['Outputfps']
-			p.min, p.max = 1.0, 30.0
+			p.min, p.max = 1.0, PARAM_DEFAULTS['Outputfps']
+			p.clampMin = p.clampMax = True
+		else:
+			p = par.Outputfps
+			# Migrate components that still carry the previous 10 fps default.
+			if abs(float(p.eval()) - 10.0) < 0.001:
+				p.val = PARAM_DEFAULTS['Outputfps']
+			p.default = PARAM_DEFAULTS['Outputfps']
+			p.min, p.max = 1.0, PARAM_DEFAULTS['Outputfps']
 			p.clampMin = p.clampMax = True
 
 		if not hasattr(par, 'Active'):

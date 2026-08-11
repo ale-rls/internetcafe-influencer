@@ -20,9 +20,10 @@ Create these exact children inside `PhoneSender`:
 Attach `PhoneSenderExt` through **Customize Component**, then re-init the
 extension after all exact-name children exist. It creates Seat, Host, Port,
 JPEG Quality, Output FPS, Active, and Live UI. Each sender defaults to JPEG
-quality `0.7` at a maximum of 10 fps.
-For multi-phone projects, start with quality `0.6` and 8 fps per sender, then
-increase them only if TouchDesigner remains responsive.
+quality `0.7` at a maximum of 24 fps. Existing components still carrying the
+old 10 fps default are migrated to 24 fps when the extension is re-initialized.
+For multi-phone projects, lower JPEG quality or Output FPS if TouchDesigner
+cannot sustain all seats at the 24 fps cap.
 
 ## Live UI
 

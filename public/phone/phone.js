@@ -4,7 +4,7 @@ const TARGET_ASPECT = TARGET_WIDTH / TARGET_HEIGHT;
 const CAMERA_WIDTH = 1280;
 const CAMERA_HEIGHT = 960;
 const CAMERA_ASPECT = CAMERA_WIDTH / CAMERA_HEIGHT;
-const TARGET_FPS = 23;
+const TARGET_FPS = 24;
 const JPEG_QUALITY = 0.7;
 // Prefer dropping a capture over queueing stale frames when the uplink is busy.
 const MAX_BUFFERED_BYTES = 0;
