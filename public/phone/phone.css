@@ -15,6 +15,19 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
   background: radial-gradient(circle at 50% 45%, #1b2034, #07080d 68%);
 }
 
+#webrtc-output {
+  position: fixed;
+  inset: 0;
+  display: none;
+  width: 100vw;
+  height: 100vh;
+  background: radial-gradient(circle at 50% 45%, #1b2034, #07080d 68%);
+  object-fit: cover;
+}
+
+body.transport-webrtc #output { display: none; }
+body.transport-webrtc #webrtc-output { display: block; }
+
 .live-ui {
   position: fixed;
   z-index: 3;

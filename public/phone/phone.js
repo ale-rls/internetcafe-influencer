@@ -15,14 +15,19 @@ const NOTIFICATION_TRANSITION_MS = 320;
 const MAX_ACTIVE_NOTIFICATIONS = 20;
 const MAX_LIVE_COMMENTS = 6;
 const LIVE_UI_TRANSITION_MS = 220;
+const WEBRTC_MAX_BITRATE = 4_000_000;
 
 const params = new URLSearchParams(window.location.search);
 const requestedSeat = params.get("seat");
 const seat = requestedSeat && /^[1-9]\d*$/.test(requestedSeat) ? Number(requestedSeat) : 1;
+const transport = params.get("transport") === "webrtc" ? "webrtc" : "jpeg";
+const isWebRtcTransport = transport === "webrtc";
+document.body.classList.toggle("transport-webrtc", isWebRtcTransport);
 
 const output = document.querySelector("#output");
 const outputContext = output.getContext("2d", { alpha: false });
 const video = document.querySelector("#camera");
+const webRtcOutput = document.querySelector("#webrtc-output");
 const startPanel = document.querySelector("#start-panel");
 const startButton = document.querySelector("#start-camera");
 const cameraMessage = document.querySelector("#camera-message");
@@ -59,6 +64,14 @@ let newestFrame;
 let decoding = false;
 let framesUp = 0;
 let framesDown = 0;
+let peerConnection;
+let peerReady = false;
+let peerSessionId;
+let offerInFlight = false;
+let pendingRemoteCandidates = [];
+let statsCollecting = false;
+let previousWebRtcFrameStats;
+let peerRestartTimer;
 let liveUiEnabled = true;
 let clearLiveCommentsTimer;
 const notificationTimers = new Map();
@@ -85,9 +98,16 @@ function connect() {
   nextSocket.addEventListener("open", () => {
     if (socket !== nextSocket) return;
     reconnectAttempt = 0;
+    if (isWebRtcTransport) {
+      peerReady = false;
+      closePeerConnection();
+    }
     nextSocket.send(JSON.stringify({ type: "hello", role: "phone", seat }));
     sendCameraInfo();
-    setStatus(stream ? "Live" : "Connected — start camera", "live");
+    setStatus(
+      stream && isWebRtcTransport ? "Waiting for media bridge…" : stream ? "Live" : "Connected — start camera",
+      "live",
+    );
   });
 
   nextSocket.addEventListener("message", (event) => {
@@ -96,9 +116,11 @@ function connect() {
       receiveControlMessage(event.data);
       return;
     }
-    enqueueProcessedFrame(event.data instanceof Blob
-      ? event.data
-      : new Blob([event.data], { type: "image/jpeg" }));
+    if (!isWebRtcTransport) {
+      enqueueProcessedFrame(event.data instanceof Blob
+        ? event.data
+        : new Blob([event.data], { type: "image/jpeg" }));
+    }
   });
 
   nextSocket.addEventListener("error", () => {
@@ -109,6 +131,10 @@ function connect() {
   nextSocket.addEventListener("close", () => {
     if (socket !== nextSocket) return;
     socket = undefined;
+    if (isWebRtcTransport) {
+      peerReady = false;
+      closePeerConnection();
+    }
     scheduleReconnect();
   });
 }
@@ -154,6 +180,25 @@ function receiveControlMessage(rawMessage) {
     return;
   }
   switch (payload?.type) {
+    case "webrtc-peer-ready":
+      if (!isWebRtcTransport) break;
+      peerReady = payload.ready !== false;
+      if (!peerReady) {
+        closePeerConnection();
+        setStatus("Waiting for media bridge…");
+        break;
+      }
+      // A peer-ready announcement also identifies a restarted decoder, so use
+      // a fresh session instead of allowing candidates from an old connection.
+      closePeerConnection();
+      void startPeerConnection();
+      break;
+    case "webrtc-answer":
+      if (isWebRtcTransport) void receiveWebRtcAnswer(payload);
+      break;
+    case "webrtc-ice":
+      if (isWebRtcTransport) void receiveRemoteIceCandidate(payload);
+      break;
     case "notification":
       if (!NOTIFICATION_APPS[payload.app]) return;
       if (typeof payload.sender !== "string" || typeof payload.message !== "string") return;
@@ -174,6 +219,235 @@ function receiveControlMessage(rawMessage) {
       break;
     default:
       break;
+  }
+}
+
+function makePeerSessionId() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function canSignalWebRtc() {
+  return isWebRtcTransport && socket?.readyState === WebSocket.OPEN;
+}
+
+function sendWebRtcMessage(message) {
+  if (!canSignalWebRtc()) return false;
+  socket.send(JSON.stringify(message));
+  return true;
+}
+
+function closePeerConnection() {
+  window.clearTimeout(peerRestartTimer);
+  peerRestartTimer = undefined;
+  const previousPeer = peerConnection;
+  peerConnection = undefined;
+  peerSessionId = undefined;
+  offerInFlight = false;
+  pendingRemoteCandidates = [];
+  previousWebRtcFrameStats = undefined;
+  statsCollecting = false;
+  if (previousPeer) {
+    previousPeer.onicecandidate = null;
+    previousPeer.ontrack = null;
+    previousPeer.onconnectionstatechange = null;
+    previousPeer.close();
+  }
+  webRtcOutput.srcObject = null;
+  uplinkElement.textContent = "0";
+  downlinkElement.textContent = "0";
+}
+
+function schedulePeerRestart() {
+  if (peerRestartTimer || !peerReady || !stream || !canSignalWebRtc()) return;
+  peerRestartTimer = window.setTimeout(() => {
+    peerRestartTimer = undefined;
+    closePeerConnection();
+    void startPeerConnection();
+  }, 750);
+}
+
+async function startPeerConnection() {
+  if (!isWebRtcTransport || !peerReady || !stream || !canSignalWebRtc()) return;
+  if (peerConnection || offerInFlight) return;
+
+  const sessionId = makePeerSessionId();
+  const peer = new RTCPeerConnection({ iceServers: [] });
+  peerConnection = peer;
+  peerSessionId = sessionId;
+  offerInFlight = true;
+
+  peer.onicecandidate = ({ candidate }) => {
+    if (peerConnection !== peer || peerSessionId !== sessionId) return;
+    sendWebRtcMessage({
+      type: "webrtc-ice",
+      sessionId,
+      candidate: candidate?.toJSON?.() ?? null,
+    });
+  };
+
+  peer.ontrack = (event) => {
+    if (peerConnection !== peer || event.track.kind !== "video") return;
+    const remoteStream = event.streams[0] ?? new MediaStream([event.track]);
+    webRtcOutput.srcObject = remoteStream;
+    void webRtcOutput.play().catch(() => {});
+  };
+
+  peer.onconnectionstatechange = () => {
+    if (peerConnection !== peer) return;
+    if (peer.connectionState === "connected") {
+      offerInFlight = false;
+      setStatus("Live", "live");
+    } else if (peer.connectionState === "failed") {
+      setStatus("Media disconnected — retrying…", "error");
+      schedulePeerRestart();
+    } else if (peer.connectionState === "disconnected") {
+      setStatus("Media interrupted…", "waiting");
+    }
+  };
+
+  try {
+    const cameraTrack = stream.getVideoTracks()[0];
+    if (!cameraTrack) throw new Error("Camera video track is unavailable");
+    // addTrack creates a sendrecv transceiver, so the bridge can return its
+    // processed canvas track on the same negotiated video section.
+    const sender = peer.addTrack(cameraTrack, stream);
+
+    try {
+      const parameters = sender.getParameters();
+      parameters.encodings = parameters.encodings?.length ? parameters.encodings : [{}];
+      parameters.encodings[0].maxFramerate = TARGET_FPS;
+      parameters.encodings[0].maxBitrate = WEBRTC_MAX_BITRATE;
+      await sender.setParameters(parameters);
+    } catch {
+      // Encoding constraints are best-effort and are not supported uniformly.
+    }
+
+    const offer = await peer.createOffer();
+    if (peerConnection !== peer || peerSessionId !== sessionId) return;
+    await peer.setLocalDescription(offer);
+    if (peerConnection !== peer || peerSessionId !== sessionId) return;
+    if (!sendWebRtcMessage({ type: "webrtc-offer", sessionId, sdp: peer.localDescription.sdp })) {
+      throw new Error("Signaling connection closed before the offer was sent");
+    }
+    setStatus("Connecting media…");
+  } catch {
+    if (peerConnection !== peer) return;
+    offerInFlight = false;
+    setStatus("Could not start media — retrying…", "error");
+    schedulePeerRestart();
+  }
+}
+
+async function receiveWebRtcAnswer(payload) {
+  const peer = peerConnection;
+  if (!peer || payload.sessionId !== peerSessionId || typeof payload.sdp !== "string") return;
+  if (peer.signalingState !== "have-local-offer") return;
+  try {
+    await peer.setRemoteDescription({ type: "answer", sdp: payload.sdp });
+    if (peerConnection !== peer) return;
+    offerInFlight = false;
+    const candidates = pendingRemoteCandidates;
+    pendingRemoteCandidates = [];
+    for (const candidate of candidates) await peer.addIceCandidate(candidate);
+  } catch {
+    if (peerConnection === peer) schedulePeerRestart();
+  }
+}
+
+async function receiveRemoteIceCandidate(payload) {
+  const peer = peerConnection;
+  if (!peer || payload.sessionId !== peerSessionId) return;
+  const candidate = payload.candidate ?? null;
+  if (!peer.remoteDescription) {
+    // Bound the queue so malformed or duplicated signaling cannot grow memory.
+    if (pendingRemoteCandidates.length < 64) pendingRemoteCandidates.push(candidate);
+    return;
+  }
+  try {
+    await peer.addIceCandidate(candidate);
+  } catch {
+    // A late or unsupported candidate is safe to ignore; other candidates may work.
+  }
+}
+
+function finiteOrNull(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+async function collectAndSendWebRtcStats() {
+  const peer = peerConnection;
+  const sessionId = peerSessionId;
+  if (!peer || !sessionId || statsCollecting) return;
+  statsCollecting = true;
+  try {
+    const report = await peer.getStats();
+    if (peerConnection !== peer || peerSessionId !== sessionId) return;
+
+    const codecs = new Map();
+    let outbound;
+    let inbound;
+    let remoteInbound;
+    let candidatePair;
+    report.forEach((stat) => {
+      if (stat.type === "codec") codecs.set(stat.id, stat.mimeType);
+      if (stat.type === "outbound-rtp" && !stat.isRemote
+          && (stat.kind === "video" || stat.mediaType === "video" || stat.framesEncoded != null)) outbound = stat;
+      if (stat.type === "inbound-rtp" && !stat.isRemote
+          && (stat.kind === "video" || stat.mediaType === "video" || stat.framesDecoded != null)) inbound = stat;
+      if (stat.type === "remote-inbound-rtp"
+          && (stat.kind === "video" || stat.mediaType === "video" || stat.roundTripTime != null)) remoteInbound = stat;
+      if (stat.type === "candidate-pair" && stat.state === "succeeded"
+          && (stat.selected || stat.nominated || !candidatePair)) candidatePair = stat;
+    });
+
+    const now = performance.now();
+    const encoded = finiteOrNull(outbound?.framesEncoded);
+    const decoded = finiteOrNull(inbound?.framesDecoded);
+    let upFps = 0;
+    let downFps = 0;
+    if (previousWebRtcFrameStats?.sessionId === sessionId) {
+      const elapsedSeconds = Math.max((now - previousWebRtcFrameStats.at) / 1000, 0.001);
+      if (encoded != null && previousWebRtcFrameStats.encoded != null) {
+        upFps = Math.max(0, Math.round((encoded - previousWebRtcFrameStats.encoded) / elapsedSeconds));
+      }
+      if (decoded != null && previousWebRtcFrameStats.decoded != null) {
+        downFps = Math.max(0, Math.round((decoded - previousWebRtcFrameStats.decoded) / elapsedSeconds));
+      }
+    }
+    previousWebRtcFrameStats = { sessionId, at: now, encoded, decoded };
+    uplinkElement.textContent = String(upFps);
+    downlinkElement.textContent = String(downFps);
+
+    const payload = {
+      type: "webrtc-stats",
+      sessionId,
+      timestamp: Date.now(),
+      connectionState: peer.connectionState,
+      outbound: {
+        state: peer.iceConnectionState,
+        codec: (codecs.get(outbound?.codecId) ?? null)?.slice?.(0, 40) ?? null,
+        fps: upFps,
+        frames: encoded,
+        bytes: finiteOrNull(outbound?.bytesSent),
+        packetLoss: finiteOrNull(remoteInbound?.packetsLost),
+        rtt: finiteOrNull(remoteInbound?.roundTripTime ?? candidatePair?.currentRoundTripTime),
+      },
+      inbound: {
+        state: peer.iceConnectionState,
+        codec: (codecs.get(inbound?.codecId) ?? null)?.slice?.(0, 40) ?? null,
+        fps: downFps,
+        frames: decoded,
+        bytes: finiteOrNull(inbound?.bytesReceived),
+        packetLoss: finiteOrNull(inbound?.packetsLost),
+        jitter: finiteOrNull(inbound?.jitter),
+      },
+    };
+    sendWebRtcMessage(payload);
+  } catch {
+    // Statistics are diagnostic only and must never interrupt the stream.
+  } finally {
+    statsCollecting = false;
   }
 }
 
@@ -438,10 +712,20 @@ async function startCamera() {
     await video.play();
     sendCameraInfo();
     window.clearInterval(captureTimer);
-    captureTimer = window.setInterval(captureAndSend, 1000 / TARGET_FPS);
-    captureAndSend();
+    if (isWebRtcTransport) {
+      captureTimer = undefined;
+      void startPeerConnection();
+    } else {
+      captureTimer = window.setInterval(captureAndSend, 1000 / TARGET_FPS);
+      captureAndSend();
+    }
     startPanel.hidden = true;
-    setStatus(socket?.readyState === WebSocket.OPEN ? "Live" : "Camera ready — connecting…", "live");
+    setStatus(
+      socket?.readyState !== WebSocket.OPEN
+        ? "Camera ready — connecting…"
+        : isWebRtcTransport ? "Waiting for media bridge…" : "Live",
+      "live",
+    );
   } catch (error) {
     const reason = error instanceof DOMException && error.name === "NotAllowedError"
       ? "Camera permission was denied. Try again after allowing access."
@@ -453,6 +737,10 @@ async function startCamera() {
 
 window.addEventListener("resize", resizeOutput);
 window.setInterval(() => {
+  if (isWebRtcTransport) {
+    void collectAndSendWebRtcStats();
+    return;
+  }
   uplinkElement.textContent = String(framesUp);
   downlinkElement.textContent = String(framesDown);
   framesUp = 0;
@@ -461,11 +749,13 @@ window.setInterval(() => {
 window.addEventListener("beforeunload", () => {
   window.clearInterval(captureTimer);
   window.clearTimeout(reconnectTimer);
+  window.clearTimeout(peerRestartTimer);
   window.clearTimeout(clearLiveCommentsTimer);
   for (const timers of notificationTimers.values()) {
     window.clearTimeout(timers.expiryTimer);
     window.clearTimeout(timers.transitionTimer);
   }
+  closePeerConnection();
   stream?.getTracks().forEach((track) => track.stop());
   socket?.close();
 });

@@ -9,6 +9,7 @@
   </head>
   <body>
     <canvas id="output" aria-label="Processed camera output"></canvas>
+    <video id="webrtc-output" autoplay playsinline muted aria-label="Processed camera output"></video>
 
     <section id="live-ui" class="live-ui" aria-label="Live comments">
       <div class="live-chrome" aria-hidden="true">
@@ -65,7 +66,7 @@
       <button id="start-camera" type="button">Start Camera</button>
     </section>
 
-    <!-- The camera is an input only; processed frames are rendered in #output. -->
+    <!-- The camera is an input only; processed frames are rendered above. -->
     <video id="camera" muted playsinline aria-hidden="true"></video>
     <script type="module" src="./phone.js"></script>
   </body>

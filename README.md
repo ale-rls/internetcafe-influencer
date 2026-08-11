@@ -200,6 +200,29 @@ Binary frames then route `phone -> decoder`, `touch-output -> phone`, and
 worker and sends versioned Float32 packets containing 478 face landmarks and
 52 named blendshape scores to TouchDesigner.
 
+## Experimental WebRTC phone transport
+
+The JPEG transport remains the default. For a same-LAN WebRTC test, opt both
+ends into the alternate transport for the same seat:
+
+```text
+http://127.0.0.1:8080/decoder/?seat=1&transport=webrtc
+https://<LAN_IP>:8443/phone/?seat=1&transport=webrtc
+```
+
+In this mode the phone sends its camera track directly to the decoder page.
+The decoder page performs the 720x1280 crop/scale for the existing Web Render
+TOP and continues to run MediaPipe tracking. TouchDesigner's existing
+`touch-output` JPEG sender is unchanged: return JPEGs are routed to the decoder
+page, painted to a canvas, captured at 10 fps, and returned to the phone as a
+WebRTC video track. The phone WebSocket remains connected for signaling,
+comments, filter controls, and diagnostics.
+
+The first implementation deliberately configures no public STUN or TURN
+servers and is intended for peers on the same local network. `/healthz`
+includes bounded per-seat `webrtcStats` after media negotiation starts. Remove
+`transport=webrtc` from both URLs to fall back to the original JPEG path.
+
 ## Live comments and filter controls
 
 The separate commenter server connects directly to:

@@ -6,13 +6,19 @@ const ROLES = new Set([
   "touch-output",
   "tracking-source",
   "tracking-sink",
+  "webrtc-bridge",
 ]);
 const BINARY_TARGET_ROLE = new Map([
   ["phone", "decoder"],
-  ["touch-output", "phone"],
   ["tracking-source", "tracking-sink"],
 ]);
 const SEAT_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+const WEBRTC_SESSION_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const WEBRTC_SDP_MAX_LENGTH = 256 * 1024;
+const WEBRTC_CANDIDATE_MAX_LENGTH = 16 * 1024;
+const WEBRTC_DIAGNOSTIC_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+const WEBRTC_DIAGNOSTIC_MAX_FIELDS = 24;
+const WEBRTC_DIAGNOSTIC_STRING_MAX_LENGTH = 160;
 
 function blankCounters() {
   return {
@@ -84,7 +90,7 @@ export class FrameRouter {
 
     if (!isBinary) return this.handleTextMessage(client, data);
 
-    const targetRole = BINARY_TARGET_ROLE.get(client.role);
+    const targetRole = this.binaryTargetRole(client);
     if (!targetRole) return this.reject(client.socket, `${client.role} is receive-only`);
 
     this.counters.receivedFrames += 1;
@@ -124,6 +130,22 @@ export class FrameRouter {
     if (client.role === "phone" && message?.type === "filter-step") {
       return this.handleFilterStep(client, message);
     }
+    if (
+      (client.role === "phone" || client.role === "webrtc-bridge")
+      && (
+        message?.type === "webrtc-offer"
+        || message?.type === "webrtc-answer"
+        || message?.type === "webrtc-ice"
+      )
+    ) {
+      return this.handleWebRtcSignal(client, message);
+    }
+    if (
+      (client.role === "phone" || client.role === "webrtc-bridge")
+      && message?.type === "webrtc-stats"
+    ) {
+      return this.handleWebRtcStats(client, message);
+    }
     if (client.role === "touch-output" && message?.type === "live-ui-state") {
       return this.handleLiveUiState(client, message);
     }
@@ -134,6 +156,139 @@ export class FrameRouter {
       return this.handleFilterState(client, message);
     }
     return this.reject(client.socket, `${client.role} cannot send this text message`);
+  }
+
+  binaryTargetRole(client) {
+    if (client.role !== "touch-output") return BINARY_TARGET_ROLE.get(client.role);
+    const bridge = this.seats.get(client.seat)?.get("webrtc-bridge")?.socket;
+    return bridge?.readyState === WebSocket.OPEN ? "webrtc-bridge" : "phone";
+  }
+
+  handleWebRtcSignal(client, message) {
+    const targetRole = client.role === "phone" ? "webrtc-bridge" : "phone";
+    const allowedType = client.role === "phone"
+      ? message.type === "webrtc-offer" || message.type === "webrtc-ice"
+      : message.type === "webrtc-answer" || message.type === "webrtc-ice";
+    if (!allowedType) {
+      return this.reject(client.socket, `${client.role} cannot send ${message.type}`);
+    }
+    if (!this.validWebRtcSessionId(message.sessionId)) {
+      return this.reject(client.socket, `${message.type} requires a valid sessionId`);
+    }
+
+    let payload;
+    if (message.type === "webrtc-ice") {
+      const candidate = this.sanitizeWebRtcCandidate(message.candidate);
+      if (candidate === undefined) {
+        return this.reject(client.socket, "webrtc-ice requires a valid candidate");
+      }
+      payload = { type: message.type, sessionId: message.sessionId, candidate };
+    } else {
+      if (
+        typeof message.sdp !== "string"
+        || message.sdp.length < 1
+        || message.sdp.length > WEBRTC_SDP_MAX_LENGTH
+      ) {
+        return this.reject(client.socket, `${message.type} requires valid SDP`);
+      }
+      payload = { type: message.type, sessionId: message.sessionId, sdp: message.sdp };
+    }
+
+    this.sendTextToRole(client.seat, targetRole, payload);
+  }
+
+  validWebRtcSessionId(sessionId) {
+    return typeof sessionId === "string" && WEBRTC_SESSION_PATTERN.test(sessionId);
+  }
+
+  sanitizeWebRtcCandidate(candidate) {
+    if (candidate === null) return null;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return undefined;
+    if (
+      typeof candidate.candidate !== "string"
+      || candidate.candidate.length > WEBRTC_CANDIDATE_MAX_LENGTH
+    ) {
+      return undefined;
+    }
+
+    const sanitized = { candidate: candidate.candidate };
+    const optionalString = (key, maxLength = 256) => {
+      const value = candidate[key];
+      if (value === undefined) return true;
+      if (value !== null && (typeof value !== "string" || value.length > maxLength)) return false;
+      sanitized[key] = value;
+      return true;
+    };
+    if (!optionalString("sdpMid") || !optionalString("usernameFragment")) return undefined;
+
+    if (candidate.sdpMLineIndex !== undefined) {
+      if (
+        candidate.sdpMLineIndex !== null
+        && (
+          !Number.isInteger(candidate.sdpMLineIndex)
+          || candidate.sdpMLineIndex < 0
+          || candidate.sdpMLineIndex > 65_535
+        )
+      ) {
+        return undefined;
+      }
+      sanitized.sdpMLineIndex = candidate.sdpMLineIndex;
+    }
+    return sanitized;
+  }
+
+  handleWebRtcStats(client, message) {
+    if (!this.validWebRtcSessionId(message.sessionId)) {
+      return this.reject(client.socket, "webrtc-stats requires a valid sessionId");
+    }
+
+    const stats = { sessionId: message.sessionId };
+    if (message.timestamp !== undefined) {
+      if (!Number.isFinite(message.timestamp) || Math.abs(message.timestamp) > Number.MAX_SAFE_INTEGER) {
+        return this.reject(client.socket, "webrtc-stats timestamp must be a finite number");
+      }
+      stats.timestamp = message.timestamp;
+    }
+    if (message.connectionState !== undefined) {
+      if (
+        typeof message.connectionState !== "string"
+        || message.connectionState.length > 32
+      ) {
+        return this.reject(client.socket, "webrtc-stats connectionState must be a short string");
+      }
+      stats.connectionState = message.connectionState;
+    }
+    for (const direction of ["inbound", "outbound"]) {
+      if (message[direction] === undefined) continue;
+      const sanitized = this.sanitizeDiagnosticRecord(message[direction]);
+      if (!sanitized) {
+        return this.reject(client.socket, `webrtc-stats ${direction} must contain bounded flat values`);
+      }
+      stats[direction] = sanitized;
+    }
+    if (Object.keys(stats).length === 1) {
+      return this.reject(client.socket, "webrtc-stats requires diagnostics");
+    }
+    client.webrtcStats = { ...stats, receivedAt: Date.now() };
+  }
+
+  sanitizeDiagnosticRecord(record) {
+    if (!record || typeof record !== "object" || Array.isArray(record)) return null;
+    const entries = Object.entries(record);
+    if (entries.length > WEBRTC_DIAGNOSTIC_MAX_FIELDS) return null;
+    const sanitized = {};
+    for (const [key, value] of entries) {
+      if (!WEBRTC_DIAGNOSTIC_KEY_PATTERN.test(key)) return null;
+      if (typeof value === "number") {
+        if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) return null;
+      } else if (typeof value === "string") {
+        if (value.length > WEBRTC_DIAGNOSTIC_STRING_MAX_LENGTH) return null;
+      } else if (typeof value !== "boolean" && value !== null) {
+        return null;
+      }
+      sanitized[key] = value;
+    }
+    return sanitized;
   }
 
   handleCameraInfo(client, message) {
@@ -297,7 +452,24 @@ export class FrameRouter {
       if (state?.filter) this.sendTextToRole(seat, "phone", state.filter);
       this.replayRecentComments(seat);
     }
+    if (role === "phone" || role === "webrtc-bridge") {
+      this.notifyWebRtcPeerReady(client);
+    }
     this.logger.info?.(`[ws] ${role} connected for seat ${seat}`);
+  }
+
+  notifyWebRtcPeerReady(client) {
+    const targetRole = client.role === "phone" ? "webrtc-bridge" : "phone";
+    const target = this.seats.get(client.seat)?.get(targetRole)?.socket;
+    if (!target || target.readyState !== WebSocket.OPEN) return;
+    this.sendTextToRole(client.seat, targetRole, {
+      type: "webrtc-peer-ready",
+      role: client.role,
+    });
+    this.sendTextToRole(client.seat, client.role, {
+      type: "webrtc-peer-ready",
+      role: targetRole,
+    });
   }
 
   reject(socket, reason) {
@@ -395,17 +567,27 @@ export class FrameRouter {
     const seats = {};
     const cameras = {};
     const controlStates = {};
+    const webrtcStats = {};
     for (const [seat, clients] of this.seats) {
+      const visibleRoles = clients.has("webrtc-bridge")
+        ? [...ROLES]
+        : [...ROLES].filter((role) => role !== "webrtc-bridge");
       seats[seat] = Object.fromEntries(
-        [...ROLES].map((role) => [role, clients.get(role)?.socket.readyState === WebSocket.OPEN]),
+        visibleRoles.map((role) => [role, clients.get(role)?.socket.readyState === WebSocket.OPEN]),
       );
       const phone = clients.get("phone");
       if (phone?.camera) cameras[seat] = structuredClone(phone.camera);
+      for (const role of ["phone", "webrtc-bridge"]) {
+        const stats = clients.get(role)?.webrtcStats;
+        if (!stats) continue;
+        if (!webrtcStats[seat]) webrtcStats[seat] = {};
+        webrtcStats[seat][role] = structuredClone(stats);
+      }
     }
     for (const [seat, state] of this.controlStates) {
       controlStates[seat] = structuredClone(state);
     }
-    return {
+    const snapshot = {
       connections: this.clients.size,
       registeredConnections: [...this.seats.values()].reduce((sum, clients) => sum + clients.size, 0),
       seats,
@@ -413,6 +595,8 @@ export class FrameRouter {
       controlStates,
       counters: { ...this.counters },
     };
+    if (Object.keys(webrtcStats).length > 0) snapshot.webrtcStats = webrtcStats;
+    return snapshot;
   }
 
   closeAll(code = 1001, reason = "server shutting down") {

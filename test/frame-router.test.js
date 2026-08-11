@@ -216,3 +216,170 @@ test("FrameRouter does not replay comments received while Live UI is disabled", 
   ]);
   assert.equal(router.snapshot().counters.replayedLiveComments, 0);
 });
+
+test("FrameRouter relays WebRTC signaling only between matching-seat peers", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const phone = new FakeSocket();
+  const bridge = new FakeSocket();
+  const otherBridge = new FakeSocket();
+  register(router, bridge, "webrtc-bridge", "1");
+  register(router, otherBridge, "webrtc-bridge", "2");
+  register(router, phone, "phone", "1");
+
+  assert.deepEqual(JSON.parse(bridge.sent.at(-1).data), {
+    type: "webrtc-peer-ready",
+    role: "phone",
+  });
+  assert.deepEqual(JSON.parse(phone.sent.at(-1).data), {
+    type: "webrtc-peer-ready",
+    role: "webrtc-bridge",
+  });
+  const otherBridgeMessageCount = otherBridge.sent.length;
+
+  phone.emit("message", Buffer.from(JSON.stringify({
+    type: "webrtc-offer",
+    sessionId: "seat-1:session-1",
+    sdp: "v=0\r\n",
+  })), false);
+  assert.deepEqual(JSON.parse(bridge.sent.at(-1).data), {
+    type: "webrtc-offer",
+    sessionId: "seat-1:session-1",
+    sdp: "v=0\r\n",
+  });
+  assert.equal(otherBridge.sent.length, otherBridgeMessageCount);
+
+  bridge.emit("message", Buffer.from(JSON.stringify({
+    type: "webrtc-answer",
+    sessionId: "seat-1:session-1",
+    sdp: "v=0\r\na=answer\r\n",
+  })), false);
+  assert.deepEqual(JSON.parse(phone.sent.at(-1).data), {
+    type: "webrtc-answer",
+    sessionId: "seat-1:session-1",
+    sdp: "v=0\r\na=answer\r\n",
+  });
+
+  phone.emit("message", Buffer.from(JSON.stringify({
+    type: "webrtc-ice",
+    sessionId: "seat-1:session-1",
+    candidate: {
+      candidate: "candidate:1 1 UDP 1 192.0.2.1 5000 typ host",
+      sdpMid: "0",
+      sdpMLineIndex: 0,
+      usernameFragment: "bounded",
+      ignoredExtraProperty: "not relayed",
+    },
+  })), false);
+  assert.deepEqual(JSON.parse(bridge.sent.at(-1).data), {
+    type: "webrtc-ice",
+    sessionId: "seat-1:session-1",
+    candidate: {
+      candidate: "candidate:1 1 UDP 1 192.0.2.1 5000 typ host",
+      sdpMid: "0",
+      sdpMLineIndex: 0,
+      usernameFragment: "bounded",
+    },
+  });
+});
+
+test("FrameRouter prefers a same-seat WebRTC bridge for TouchDesigner frames and falls back", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const phone = new FakeSocket();
+  const bridge = new FakeSocket();
+  const touchOutput = new FakeSocket();
+  register(router, phone, "phone", "1");
+  register(router, touchOutput, "touch-output", "1");
+
+  touchOutput.emit("message", Buffer.from("legacy-return"), true);
+  assert.deepEqual(phone.sent.at(-1).data, Buffer.from("legacy-return"));
+
+  register(router, bridge, "webrtc-bridge", "1");
+  const phoneMessageCount = phone.sent.length;
+  touchOutput.emit("message", Buffer.from("webrtc-return"), true);
+  assert.deepEqual(bridge.sent.at(-1).data, Buffer.from("webrtc-return"));
+  assert.equal(phone.sent.length, phoneMessageCount, "phone does not receive a duplicate return frame");
+
+  bridge.close(1000, "test fallback");
+  touchOutput.emit("message", Buffer.from("fallback-return"), true);
+  assert.deepEqual(phone.sent.at(-1).data, Buffer.from("fallback-return"));
+});
+
+test("FrameRouter rejects malformed and role-disallowed WebRTC signaling", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+
+  const bridgeOffer = new FakeSocket();
+  register(router, bridgeOffer, "webrtc-bridge", "1");
+  bridgeOffer.emit("message", Buffer.from(JSON.stringify({
+    type: "webrtc-offer",
+    sessionId: "session-1",
+    sdp: "v=0\r\n",
+  })), false);
+  assert.deepEqual(bridgeOffer.closed, {
+    code: 1008,
+    reason: "webrtc-bridge cannot send webrtc-offer",
+  });
+
+  const invalidSession = new FakeSocket();
+  register(router, invalidSession, "phone", "1");
+  invalidSession.emit("message", Buffer.from(JSON.stringify({
+    type: "webrtc-offer",
+    sessionId: "spaces are not valid",
+    sdp: "v=0\r\n",
+  })), false);
+  assert.equal(invalidSession.closed?.code, 1008);
+
+  const invalidCandidate = new FakeSocket();
+  register(router, invalidCandidate, "phone", "2");
+  invalidCandidate.emit("message", Buffer.from(JSON.stringify({
+    type: "webrtc-ice",
+    sessionId: "session-2",
+    candidate: { candidate: 42 },
+  })), false);
+  assert.deepEqual(invalidCandidate.closed, {
+    code: 1008,
+    reason: "webrtc-ice requires a valid candidate",
+  });
+
+  const decoder = new FakeSocket();
+  register(router, decoder, "decoder", "3");
+  decoder.emit("message", Buffer.from(JSON.stringify({
+    type: "webrtc-answer",
+    sessionId: "session-3",
+    sdp: "v=0\r\n",
+  })), false);
+  assert.deepEqual(decoder.closed, {
+    code: 1008,
+    reason: "decoder cannot send this text message",
+  });
+  assert.equal(router.snapshot().counters.rejectedMessages, 4);
+});
+
+test("FrameRouter stores bounded WebRTC diagnostics without relaying them", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const phone = new FakeSocket();
+  const bridge = new FakeSocket();
+  register(router, phone, "phone", "4");
+  register(router, bridge, "webrtc-bridge", "4");
+  const bridgeMessageCount = bridge.sent.length;
+
+  phone.emit("message", Buffer.from(JSON.stringify({
+    type: "webrtc-stats",
+    sessionId: "seat-4-session",
+    timestamp: 1234.5,
+    connectionState: "connected",
+    inbound: { framesPerSecond: 10, framesDropped: 2, codec: "VP8" },
+    outbound: { framesPerSecond: 23, bytesSent: 123456, qualityLimited: false },
+  })), false);
+
+  assert.equal(bridge.sent.length, bridgeMessageCount, "diagnostics are not relayed");
+  const stats = router.snapshot().webrtcStats["4"].phone;
+  assert.deepEqual(stats.inbound, { framesPerSecond: 10, framesDropped: 2, codec: "VP8" });
+  assert.deepEqual(stats.outbound, {
+    framesPerSecond: 23,
+    bytesSent: 123456,
+    qualityLimited: false,
+  });
+  assert.equal(stats.sessionId, "seat-4-session");
+  assert.equal(stats.connectionState, "connected");
+  assert.ok(Number.isInteger(stats.receivedAt));
+});
