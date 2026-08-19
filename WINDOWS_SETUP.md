@@ -273,24 +273,37 @@ print(len(jpeg), s.op('ws_output').sendBinary(jpeg))
 ```
 
 The byte length should be greater than zero and one frame should immediately
-appear on the phone. If that works but automatic sending remains idle, inspect
-the sender callback and its stored throttle timestamp:
+appear on the phone. If that works but automatic sending remains idle, confirm
+the installed callback contains the absolute-frame scheduler:
 
 ```python
 print('onFrameStart' in s.op('send_execute').text)
-print(s.op('send_execute').fetch('last_send_monotonic', None, search=False))
+print('_frame_is_due' in s.op('send_execute').text)
+print(s.par.Outputfps.eval(), project.cookRate, absTime.frame)
 ```
 
-The `.toe` may contain a stale monotonic timestamp saved on another runtime.
-This can make the 10 fps throttle suppress every automatic send. Clear it:
+The current callback does not store a monotonic throttle timestamp in the
+`.toe`; it derives every decision directly from the absolute frame, target
+output rate, project cook rate, and seat number. Re-paste
+`touchdesigner/scripts/v2/output_sender_callbacks.py` if `_frame_is_due` is
+missing.
+
+For performance commissioning, enable **Use Shared Texture** on all Web Render
+TOPs and assign TouchDesigner plus every `TouchDesignerWebRender.exe` process
+to the same NVIDIA GPU. Then compare all seven seats at Output FPS 12, 15, and
+24. The tracking delegate must remain GPU at every seat.
+
+The PhoneSender extension also provides **Benchmark Sender**. Leave the sender
+Active, pulse it once, wait for the completion message, then inspect:
 
 ```python
-s.op('send_execute').store('last_send_monotonic', None)
+print(s.fetch('sender_benchmark_results', {}, search=False))
+print(s.fetch('sender_benchmark_error', '', search=False))
 ```
 
-This is the command that restored automatic return streaming during the Windows
-seat 1 commissioning test. It is a runtime workaround and does not edit project
-source. Automatic return frames should begin immediately.
+Normal return frames pause while this explicit benchmark compares synchronous
+JPEG, immediate and delayed raw readback, pixel conversion, and OpenCV JPEG
+encoding. Do not pulse all seven benchmarks simultaneously.
 
 ## Troubleshooting
 

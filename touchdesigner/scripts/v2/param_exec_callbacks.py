@@ -11,6 +11,7 @@ def onValuesChanged(changes):
 
 
 def onPulse(par):
+	me.parent().ext.PhoneSenderExt.OnParameterChange(par)
 	return
 
 

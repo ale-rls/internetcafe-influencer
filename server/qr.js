@@ -52,6 +52,7 @@ export function phoneUrlForSeat(phoneBaseUrl, seat = DEFAULT_SEAT) {
   base.pathname = `${prefix}${PHONE_PATH}`;
   base.search = "";
   base.searchParams.set("seat", String(seatNumber));
+  base.searchParams.set("transport", "webrtc");
   base.hash = "";
   return base.toString();
 }

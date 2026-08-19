@@ -6,6 +6,8 @@ binary tracking packet. Every channel has one sample and remains present with a
 zero value when no face is detected, preserving a stable downstream contract.
 """
 
+import numpy as np
+
 
 BLENDSHAPE_NAMES = (
 	'_neutral',
@@ -62,6 +64,26 @@ BLENDSHAPE_NAMES = (
 	'noseSneerRight',
 )
 TRACKING_WEBSOCKET_NAME = 'ws_tracking'
+_OUTPUT = np.zeros((len(BLENDSHAPE_NAMES), 1), dtype=np.float32)
+_LAYOUT_READY = set()
+
+
+def _ensure_layout(scriptOp):
+	key = scriptOp.path
+	if (
+		key in _LAYOUT_READY
+		and scriptOp.numChans == len(BLENDSHAPE_NAMES)
+		and scriptOp.numSamples == 1
+	):
+		return
+	channels = scriptOp.chans()
+	if tuple(channel.name for channel in channels) != BLENDSHAPE_NAMES:
+		scriptOp.clear()
+		for name in BLENDSHAPE_NAMES:
+			scriptOp.appendChan(name)
+	if scriptOp.numSamples != 1:
+		scriptOp.numSamples = 1
+	_LAYOUT_READY.add(key)
 
 
 def _blendshapes_enabled(scriptOp):
@@ -74,8 +96,8 @@ def _blendshapes_enabled(scriptOp):
 
 
 def onCook(scriptOp):
-	scriptOp.clear()
-	scriptOp.numSamples = 1
+	_ensure_layout(scriptOp)
+	_OUTPUT.fill(0.0)
 
 	tracking_dat = scriptOp.parent().op(TRACKING_WEBSOCKET_NAME)
 	valid = (
@@ -83,11 +105,14 @@ def onCook(scriptOp):
 		and tracking_dat is not None
 		and tracking_dat.fetch('tracking_blendshapes_valid', False)
 	)
-	scores = tracking_dat.fetch('tracking_blendshapes', ()) if valid else ()
-
-	for index, name in enumerate(BLENDSHAPE_NAMES):
-		channel = scriptOp.appendChan(name)
-		channel[0] = float(scores[index]) if index < len(scores) else 0.0
+	scores = np.asarray(
+		tracking_dat.fetch('tracking_blendshapes', ()) if valid else (),
+		dtype=np.float32,
+	)
+	count = min(len(scores), len(BLENDSHAPE_NAMES))
+	if count:
+		_OUTPUT[:count, 0] = scores[:count]
+	scriptOp.copyNumpyArray(_OUTPUT)
 	return
 
 

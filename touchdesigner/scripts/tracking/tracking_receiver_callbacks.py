@@ -9,6 +9,8 @@ Script CHOPs.
 import json
 import struct
 
+import numpy as np
+
 
 PACKET_MAGIC = 0x4B525449  # ASCII "ITRK" in the packet's little-endian order.
 LANDMARK_PACKET_VERSION = 1
@@ -249,25 +251,29 @@ def onReceiveBinary(dat, contents):
 			raise ValueError('packet length is {}, expected {}'.format(len(contents), expected_bytes))
 
 		if landmark_value_total:
-			flat = struct.unpack_from('<{}f'.format(landmark_value_total), contents, header_bytes)
-			landmarks = tuple(
-				(flat[index], flat[index + 1], flat[index + 2])
-				for index in range(0, landmark_value_total, value_count)
-			)
+			# Own the payload before the deferred Script CHOP cook. A view into
+			# ``contents`` could observe reused WebSocket storage under load.
+			landmarks = np.frombuffer(
+				contents,
+				dtype='<f4',
+				count=landmark_value_total,
+				offset=header_bytes,
+			).reshape((landmark_count, value_count)).copy()
 		else:
 			landmarks = ()
 
 		if blendshape_value_total:
 			blendshape_offset = header_bytes + landmark_value_total * 4
-			blendshapes = struct.unpack_from(
-				'<{}f'.format(blendshape_value_total),
+			blendshapes = np.frombuffer(
 				contents,
-				blendshape_offset,
-			)
+				dtype='<f4',
+				count=blendshape_value_total,
+				offset=blendshape_offset,
+			).copy()
 		else:
 			blendshapes = ()
 
-		valid = bool(flags & FACE_PRESENT_FLAG) and bool(landmarks)
+		valid = bool(flags & FACE_PRESENT_FLAG) and landmark_count > 0
 		blendshapes_valid = (
 			valid
 			and bool(flags & BLENDSHAPES_PRESENT_FLAG)

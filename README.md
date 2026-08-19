@@ -202,8 +202,8 @@ worker and sends versioned Float32 packets containing 478 face landmarks and
 
 ## Experimental WebRTC phone transport
 
-The JPEG transport remains the default. For a same-LAN WebRTC test, opt both
-ends into the alternate transport for the same seat:
+The generated QR code opts phones into WebRTC. For a same-LAN WebRTC test, use
+the alternate transport on both ends for the same seat:
 
 ```text
 http://127.0.0.1:8080/decoder/?seat=1&transport=webrtc
