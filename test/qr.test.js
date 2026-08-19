@@ -5,7 +5,7 @@ import { createQrPage, phoneUrlForSeat, publicPhoneBaseUrl, renderQrHtml } from 
 test("phoneUrlForSeat preserves a deployed path prefix and removes query/fragment", () => {
   assert.equal(
     phoneUrlForSeat("https://cafe.example/kiosk/?stale=yes#fragment", 7),
-    "https://cafe.example/kiosk/phone/?seat=7",
+    "https://cafe.example/kiosk/phone/?seat=7&transport=webrtc",
   );
 });
 
@@ -40,7 +40,7 @@ test("createQrPage encodes the exact phone URL with the expected QR options", as
   });
 
   assert.deepEqual(captured, {
-    value: "https://cafe.example/demo/phone/?seat=3",
+    value: "https://cafe.example/demo/phone/?seat=3&transport=webrtc",
     options: { type: "svg", errorCorrectionLevel: "M", margin: 2 },
   });
   assert.equal(page.phoneUrl, captured.value);
