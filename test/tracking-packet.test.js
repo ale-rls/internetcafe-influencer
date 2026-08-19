@@ -25,6 +25,31 @@ test("browser and TouchDesigner use the same canonical blendshape order", () => 
   assert.deepEqual(touchDesignerNames, TRACKING_BLENDSHAPE_NAMES);
 });
 
+test("TouchDesigner owns packet arrays and bulk-copies stable CHOP outputs", () => {
+  const receiver = readFileSync(
+    new URL("../touchdesigner/scripts/tracking/tracking_receiver_callbacks.py", import.meta.url),
+    "utf8",
+  );
+  const landmarks = readFileSync(
+    new URL("../touchdesigner/scripts/tracking/tracking_script_callbacks.py", import.meta.url),
+    "utf8",
+  );
+  const blendshapes = readFileSync(
+    new URL("../touchdesigner/scripts/tracking/blendshape_script_callbacks.py", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(receiver, /np\.frombuffer\([\s\S]*?\)\.reshape\([\s\S]*?\)\.copy\(\)/);
+  assert.match(receiver, /blendshapes = np\.frombuffer\([\s\S]*?\)\.copy\(\)/);
+  assert.doesNotMatch(receiver, /flat = struct\.unpack_from/);
+
+  for (const callbacks of [landmarks, blendshapes]) {
+    assert.match(callbacks, /_OUTPUT\.fill\(0\.0\)/);
+    assert.match(callbacks, /scriptOp\.copyNumpyArray\(_OUTPUT\)/);
+  }
+  assert.doesNotMatch(landmarks, /scriptOp\['[xy]'\]\[index\]/);
+});
+
 test("tracking packets contain a versioned header and little-endian Float32 landmarks", () => {
   const packet = encodeTrackingPacket(42, 1234.5, [
     { x: 0.25, y: 0.75, z: -0.125 },

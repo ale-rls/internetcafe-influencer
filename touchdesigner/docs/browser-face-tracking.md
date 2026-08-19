@@ -19,6 +19,24 @@ canonical Float32 blendshape scores. No-face frames contain only the header,
 which clears stale landmarks and scores in TouchDesigner. The TouchDesigner
 receiver still accepts the older version 1 landmark-only packets.
 
+## Windows performance baseline
+
+Before profiling Python or JPEG output, enable **Use Shared Texture** on every
+Web Render TOP. This keeps the CEF-to-TouchDesigner handoff on a shared Direct3D
+texture instead of copying through shared CPU memory. All
+`TouchDesignerWebRender.exe` processes and TouchDesigner itself must be assigned
+to the same NVIDIA GPU in Windows **System > Display > Graphics**. If a Web
+Render TOP stops producing an image, attach an Info DAT, inspect its error, and
+turn Shared Texture back off for that operator.
+
+Confirm that every decoder selected MediaPipe's GPU delegate. The decoder body
+exposes `data-tracking-delegate="GPU"` after its tracking worker starts. Treat a
+`CPU` value as a configuration or per-process GPU problem before changing the
+tracking architecture.
+
+Record the TouchDesigner frame-time baseline after both checks. Use that same
+configuration for all later 12/15/24 fps sender comparisons.
+
 ## TouchDesigner operators
 
 Create these operators beside the artist's existing face-tracking network:
@@ -97,8 +115,9 @@ a downstream `rename1` CHOP can keep the `blendshapes` and `rename1` operators.
 Replace the old JSON-parsing callbacks with
 `blendshape_script_callbacks.py`, and set the `blendshapes` Script CHOP's
 Callbacks DAT to that Text DAT. The new callback reads the already decoded
-scores from the sibling `ws_tracking` DAT, so `in1`, `json.loads`, and NumPy are
-no longer required.
+scores from the sibling `ws_tracking` DAT, so `in1` and `json.loads` are no
+longer required. The callbacks use the NumPy package bundled with
+TouchDesigner.
 
 The Script CHOP always creates the canonical 52 MediaPipe channels in the same
 order as the artist's `BlendShapes` table, from `_neutral` through
@@ -110,6 +129,10 @@ connected if downstream channel renaming is still needed.
 Landmark and blendshape CHOP cooks are deferred until the end of the current
 TouchDesigner frame. This avoids a circular cook dependency between
 `ws_tracking` and the Script CHOPs while retaining event-driven updates.
+The receiver copies each validated packet payload into owned float32 arrays
+before that deferred cook. Both Script CHOPs retain their channel layout, clear
+their reusable output arrays on every cook, and use one whole-CHOP NumPy copy.
+No-face packets therefore clear the output instead of freezing the last face.
 
 ## Alignment and diagnostics
 

@@ -17,6 +17,7 @@ PARAM_DEFAULTS = {
 	'Port': 8080,
 	'Jpegquality': 0.7,
 	'Outputfps': 24.0,
+	'Benchmarksamples': 30,
 	'Active': False,
 	'Liveui': True,
 }
@@ -77,6 +78,15 @@ class ParameterManager:
 			p.min, p.max = 1.0, PARAM_DEFAULTS['Outputfps']
 			p.clampMin = p.clampMax = True
 
+		if not hasattr(par, 'Benchmarksamples'):
+			p = page.appendInt('Benchmarksamples', label='Benchmark Samples')[0]
+			p.default = p.val = PARAM_DEFAULTS['Benchmarksamples']
+			p.min, p.max = 5, 120
+			p.clampMin = p.clampMax = True
+
+		if not hasattr(par, 'Benchmarksender'):
+			page.appendPulse('Benchmarksender', label='Benchmark Sender')
+
 		if not hasattr(par, 'Active'):
 			p = page.appendToggle('Active', label='Active')[0]
 			p.default = p.val = PARAM_DEFAULTS['Active']
@@ -101,7 +111,7 @@ class ParameterManager:
 			return
 
 		param_exec.par.op = self.ownerComp.path
-		param_exec.par.pars = 'Active Seat Host Port Liveui'
+		param_exec.par.pars = 'Active Seat Host Port Liveui Benchmarksender'
 		param_exec.par.valuechange = True
 		param_exec.par.custom = True
 		param_exec.par.builtin = False
@@ -200,6 +210,21 @@ class PhoneSenderExt:
 		"""Publish PhoneSender-owned state after WebSocket registration."""
 		self.SendLiveUiState()
 
+	def StartSenderBenchmark(self):
+		send_execute = self.ownerComp.op('send_execute')
+		if send_execute is None:
+			return
+		send_execute.store('sender_benchmark_active', True)
+		send_execute.store('sender_benchmark_phase', 0)
+		send_execute.store('sender_benchmark_warmup', 2)
+		send_execute.store('sender_benchmark_collected', 0)
+		send_execute.store('sender_benchmark_delayed_none', 0)
+		send_execute.store('sender_benchmark_samples', {})
+		send_execute.store('sender_benchmark_target', int(self.ownerComp.par.Benchmarksamples.eval()))
+		self.ownerComp.store('sender_benchmark_results', {})
+		self.ownerComp.store('sender_benchmark_error', '')
+		print('PhoneSender: sender benchmark started; normal output is temporarily paused')
+
 	def OnParameterChange(self, par):
 		if par.name == 'Active':
 			if par.eval():
@@ -211,3 +236,5 @@ class PhoneSenderExt:
 			self.Start()
 		elif par.name == 'Liveui':
 			self.SendLiveUiState()
+		elif par.name == 'Benchmarksender':
+			self.StartSenderBenchmark()
