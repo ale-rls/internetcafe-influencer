@@ -7,7 +7,6 @@ import time
 
 
 DEFAULT_OUTPUT_FPS = 24.0
-DEFAULT_COOK_FPS = 60.0
 DEFAULT_SEAT_COUNT = 7
 BENCHMARK_PHASES = (
 	'saveByteArray',
@@ -26,36 +25,26 @@ def _output_fps():
 	return max(1.0, min(DEFAULT_OUTPUT_FPS, output_fps))
 
 
-def _cook_fps():
-	try:
-		return max(1.0, float(project.cookRate))
-	except Exception:
-		return DEFAULT_COOK_FPS
-
-
-def _absolute_frame(callback_frame):
-	try:
-		return int(absTime.frame)
-	except Exception:
-		return int(callback_frame)
-
-
-def _frame_is_due(frame, output_fps, cook_fps, seat, seat_count=DEFAULT_SEAT_COUNT):
-	"""Distribute fractional-rate seat sends across absolute cook frames."""
-	cook_fps = max(1.0, float(cook_fps))
-	output_fps = max(0.0, min(float(output_fps), cook_fps))
+def _send_slot(timestamp, output_fps, seat, seat_count=DEFAULT_SEAT_COUNT):
+	"""Return a monotonic output slot, phase-shifted across seats."""
+	output_fps = max(1.0, min(DEFAULT_OUTPUT_FPS, float(output_fps)))
 	seat_count = max(1, int(seat_count))
 	seat_index = (max(1, int(seat)) - 1) % seat_count
-	phase = seat_index * cook_fps / seat_count
-	current_slot = math.floor((int(frame) * output_fps + phase) / cook_fps)
-	previous_slot = math.floor(((int(frame) - 1) * output_fps + phase) / cook_fps)
-	return current_slot != previous_slot
+	phase = seat_index / seat_count
+	return math.floor(float(timestamp) * output_fps + phase)
 
 
-def _should_send(frame):
+def _should_send(_frame):
 	seat_par = getattr(me.parent().par, 'Seat', None)
 	seat = int(seat_par.eval()) if seat_par is not None else 1
-	return _frame_is_due(_absolute_frame(frame), _output_fps(), _cook_fps(), seat)
+	current_slot = _send_slot(time.perf_counter(), _output_fps(), seat)
+	previous_slot = me.fetch('sender_last_send_slot', None, search=False)
+	if previous_slot == current_slot:
+		return False
+	# Advance directly to the observed slot. Repeated cooks stay quiet, while a
+	# delayed cook sends once without trying to burst through missed slots.
+	me.store('sender_last_send_slot', current_slot)
+	return True
 
 
 def _error_once(message):
