@@ -78,6 +78,30 @@ the measured conversion plus `cv2Imencode` cost fits the CPU budget. The
 benchmark's conversion and encoding blocks require TouchDesigner's bundled
 NumPy and OpenCV modules.
 
+During a live seven-seat run, inspect the rolling synchronous readback cost and
+confirm the production rate directly:
+
+```python
+s = op('/project1/PhoneSender')
+print('save average ms:', s.fetch('sender_average_save_ms', None, search=False))
+print('output fps:', s.par.Outputfps.eval())
+```
+
+`saveByteArray()` performs a GPU-to-CPU readback and JPEG encode on
+TouchDesigner's main thread. If `sender_average_save_ms` is more than a few
+milliseconds per active seat, seven senders can consume a substantial part of
+the cook budget. First lower **JPEG Quality** below `0.7`, then reduce the TOP
+resolution upstream of `stream_source` if the artwork allows it. Confirm every
+production component is actually set to **Output FPS = 24** before interpreting
+return-FPS or latency measurements; reduce it deliberately only after measuring
+the full installation.
+
+TouchDesigner's Video Stream Out TOP could eventually send hardware-encoded
+WebRTC and remove the JPEG encode, WebSocket, browser bitmap decode, canvas,
+and re-encode bridge. Treat that as a future/endgame architecture change, not
+part of this latency milestone: the current JPEG bridge remains easier to
+inspect and recover while the installation is being stabilized.
+
 ## Live UI
 
 `Liveui` controls the phone's Instagram-style comment overlay and decorative

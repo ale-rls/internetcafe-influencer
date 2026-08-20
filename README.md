@@ -159,6 +159,12 @@ enough: also enable it under **Settings > General > About > Certificate Trust
 Settings**, then fully restart Safari. Never continue through a certificate
 warning; it means the CA is not trusted or the address does not match.
 
+On Android, open **Settings > Security > Install certificates > CA
+certificate** (the exact labels vary by manufacturer), select the same `.cer`
+file, and accept the device-lock warning. Chrome on that device should then
+open the exact HTTPS health URL without a certificate warning. Install only
+the public CA file, never the server private key.
+
 For additional platform notes and the TouchDesigner acceptance test, see
 [WINDOWS_SETUP.md](WINDOWS_SETUP.md) and [HTTPS_SETUP.md](HTTPS_SETUP.md).
 
@@ -189,7 +195,8 @@ changed on the same computer, regenerate the server certificate and update
 - `/qrcode` - short alias for the seat 1 QR page
 - `/phone/?seat=1` - phone camera sender and processed-frame viewer
 - `/decoder/?seat=1` - canvas captured by TouchDesigner Web Render TOP
-- `http://127.0.0.1:8080/control/` - computer-only notification controls
+- `http://127.0.0.1:8080/control/` - computer-only notifications and seat
+  health dashboard
 - `/healthz` - connection, routing, and frame counters
 - `/stream` - binary WebSocket endpoint
 - `/comments/relay` - commenter-station WebSocket receiver
@@ -222,6 +229,27 @@ The first implementation deliberately configures no public STUN or TURN
 servers and is intended for peers on the same local network. `/healthz`
 includes bounded per-seat `webrtcStats` after media negotiation starts. Remove
 `transport=webrtc` from both URLs to fall back to the original JPEG path.
+
+## Installation operations
+
+Keep `http://127.0.0.1:8080/control/` open on the terminal during operation.
+Its seat monitor polls `/healthz` and shows phone/decoder/TouchDesigner
+connectivity, return FPS, decoded-frame freshness, WebRTC stats freshness, and
+the recent average jitter-buffer delay. A red card indicates an offline,
+stale, or stalled seat; “—” means that browser has not exposed the metric.
+Encoder limitation is surfaced in the seat state when the decoder reports it.
+This page is intentionally loopback-only.
+
+Run the server as a supervised Windows service for an unattended installation;
+the foreground `pnpm start` command does not survive a reboot or restart after
+an unexpected exit. Concrete NSSM and Task Scheduler recipes are in
+[WINDOWS_SETUP.md](WINDOWS_SETUP.md#run-the-server-as-a-supervised-service).
+
+Keep all seven phones on suitable chargers, disable unnecessary background
+apps, and provide airflow around them. Before opening the installation, run a
+one-hour soak with every seat active. Watch return FPS, frame freshness, and
+`qualityLimitation` in `/healthz`; a persistent `cpu` value is an early sign of
+thermal/encoder pressure. Use only the camera resolution the artwork needs.
 
 ## Live comments and filter controls
 

@@ -16,6 +16,7 @@ const MAX_ACTIVE_NOTIFICATIONS = 20;
 const MAX_LIVE_COMMENTS = 6;
 const LIVE_UI_TRANSITION_MS = 220;
 const WEBRTC_MAX_BITRATE = 4_000_000;
+const FRAME_WATCHDOG_STALL_MS = 5_000;
 
 const params = new URLSearchParams(window.location.search);
 const requestedSeat = params.get("seat");
@@ -73,6 +74,10 @@ let pendingRemoteCandidates = [];
 let statsCollecting = false;
 let previousWebRtcFrameStats;
 let peerRestartTimer;
+let frameWatchdogTimer;
+let watchedDecodedFrames;
+let wakeLock;
+let wakeLockRequestInFlight = false;
 let liveUiEnabled = true;
 let clearLiveCommentsTimer;
 const notificationTimers = new Map();
@@ -80,6 +85,38 @@ const notificationTimers = new Map();
 function setStatus(message, kind = "waiting") {
   statusElement.textContent = message;
   statusElement.className = `status status--${kind}`;
+}
+
+async function requestScreenWakeLock() {
+  if (
+    wakeLock
+    || wakeLockRequestInFlight
+    || document.visibilityState !== "visible"
+    || !("wakeLock" in navigator)
+  ) return;
+
+  wakeLockRequestInFlight = true;
+  try {
+    const requestedLock = await navigator.wakeLock.request("screen");
+    if (document.visibilityState !== "visible") {
+      await requestedLock.release();
+      return;
+    }
+    wakeLock = requestedLock;
+    requestedLock.addEventListener("release", () => {
+      if (wakeLock === requestedLock) wakeLock = undefined;
+    });
+  } catch {
+    // Wake locks can be unavailable, denied, or released by the operating system.
+  } finally {
+    wakeLockRequestInFlight = false;
+  }
+}
+
+function releaseScreenWakeLock() {
+  const previousLock = wakeLock;
+  wakeLock = undefined;
+  if (previousLock) void previousLock.release().catch(() => {});
 }
 
 function websocketUrl() {
@@ -241,9 +278,40 @@ function sendWebRtcMessage(message) {
   return true;
 }
 
+function resetFrameWatchdog() {
+  window.clearTimeout(frameWatchdogTimer);
+  frameWatchdogTimer = undefined;
+  watchedDecodedFrames = undefined;
+}
+
+function armFrameWatchdog(peer, sessionId, decodedFrames) {
+  if (
+    (peer.connectionState !== "connected" && peer.connectionState !== "disconnected")
+    || decodedFrames == null
+  ) {
+    resetFrameWatchdog();
+    return;
+  }
+
+  if (watchedDecodedFrames != null && decodedFrames <= watchedDecodedFrames) return;
+  watchedDecodedFrames = decodedFrames;
+  window.clearTimeout(frameWatchdogTimer);
+  frameWatchdogTimer = window.setTimeout(() => {
+    frameWatchdogTimer = undefined;
+    if (
+      peerConnection !== peer
+      || peerSessionId !== sessionId
+      || (peer.connectionState !== "connected" && peer.connectionState !== "disconnected")
+    ) return;
+    setStatus("Media stalled — retrying…", "error");
+    schedulePeerRestart();
+  }, FRAME_WATCHDOG_STALL_MS);
+}
+
 function closePeerConnection() {
   window.clearTimeout(peerRestartTimer);
   peerRestartTimer = undefined;
+  resetFrameWatchdog();
   const previousPeer = peerConnection;
   peerConnection = undefined;
   peerSessionId = undefined;
@@ -292,6 +360,23 @@ async function startPeerConnection() {
 
   peer.ontrack = (event) => {
     if (peerConnection !== peer || event.track.kind !== "video") return;
+    const receiver = event.receiver
+      ?? peer.getReceivers().find((candidate) => candidate.track === event.track)
+      ?? peer.getReceivers().find((candidate) => candidate.track?.kind === "video");
+    try {
+      if (receiver && "jitterBufferTarget" in receiver) {
+        receiver.jitterBufferTarget = 0;
+      } else if (receiver && "playoutDelayHint" in receiver) {
+        receiver.playoutDelayHint = 0;
+      }
+    } catch {
+      // Receiver latency hints are optional and may be read-only in some browsers.
+      try {
+        if (receiver && "playoutDelayHint" in receiver) receiver.playoutDelayHint = 0;
+      } catch {
+        // Keep receiving with the browser's default playout buffering.
+      }
+    }
     const remoteStream = event.streams[0] ?? new MediaStream([event.track]);
     webRtcOutput.srcObject = remoteStream;
     void webRtcOutput.play().catch(() => {});
@@ -303,16 +388,25 @@ async function startPeerConnection() {
       offerInFlight = false;
       setStatus("Live", "live");
     } else if (peer.connectionState === "failed") {
+      resetFrameWatchdog();
       setStatus("Media disconnected — retrying…", "error");
       schedulePeerRestart();
     } else if (peer.connectionState === "disconnected") {
       setStatus("Media interrupted…", "waiting");
+      armFrameWatchdog(peer, sessionId, previousWebRtcFrameStats?.decoded ?? null);
+    } else if (peer.connectionState === "closed") {
+      resetFrameWatchdog();
     }
   };
 
   try {
     const cameraTrack = stream.getVideoTracks()[0];
     if (!cameraTrack) throw new Error("Camera video track is unavailable");
+    try {
+      cameraTrack.contentHint = "motion";
+    } catch {
+      // contentHint is best-effort and is not supported uniformly.
+    }
     // addTrack creates a sendrecv transceiver, so the bridge can return its
     // processed canvas track on the same negotiated video section.
     const sender = peer.addTrack(cameraTrack, stream);
@@ -322,6 +416,7 @@ async function startPeerConnection() {
       parameters.encodings = parameters.encodings?.length ? parameters.encodings : [{}];
       parameters.encodings[0].maxFramerate = TARGET_FPS;
       parameters.encodings[0].maxBitrate = WEBRTC_MAX_BITRATE;
+      parameters.degradationPreference = "maintain-framerate";
       await sender.setParameters(parameters);
     } catch {
       // Encoding constraints are best-effort and are not supported uniformly.
@@ -420,6 +515,7 @@ async function collectAndSendWebRtcStats() {
       }
     }
     previousWebRtcFrameStats = { sessionId, at: now, encoded, decoded };
+    armFrameWatchdog(peer, sessionId, decoded);
     uplinkElement.textContent = String(upFps);
     downlinkElement.textContent = String(downFps);
 
@@ -436,6 +532,9 @@ async function collectAndSendWebRtcStats() {
         bytes: finiteOrNull(outbound?.bytesSent),
         packetLoss: finiteOrNull(remoteInbound?.packetsLost),
         rtt: finiteOrNull(remoteInbound?.roundTripTime ?? candidatePair?.currentRoundTripTime),
+        qualityLimitation: typeof outbound?.qualityLimitationReason === "string"
+          ? outbound.qualityLimitationReason.slice(0, 40)
+          : null,
       },
       inbound: {
         state: peer.iceConnectionState,
@@ -445,6 +544,10 @@ async function collectAndSendWebRtcStats() {
         bytes: finiteOrNull(inbound?.bytesReceived),
         packetLoss: finiteOrNull(inbound?.packetsLost),
         jitter: finiteOrNull(inbound?.jitter),
+        jitterBufferDelay: finiteOrNull(inbound?.jitterBufferDelay),
+        jitterBufferEmittedCount: finiteOrNull(inbound?.jitterBufferEmittedCount),
+        totalDecodeTime: finiteOrNull(inbound?.totalDecodeTime),
+        framesReceived: finiteOrNull(inbound?.framesReceived),
       },
     };
     sendWebRtcMessage(payload);
@@ -704,6 +807,7 @@ function captureAndSend() {
 async function startCamera() {
   startButton.disabled = true;
   cameraMessage.textContent = "Opening camera…";
+  void requestScreenWakeLock();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -744,6 +848,13 @@ async function startCamera() {
 }
 
 window.addEventListener("resize", resizeOutput);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    void requestScreenWakeLock();
+  } else {
+    releaseScreenWakeLock();
+  }
+});
 window.setInterval(() => {
   if (isWebRtcTransport) {
     void collectAndSendWebRtcStats();
@@ -758,6 +869,7 @@ window.addEventListener("beforeunload", () => {
   window.clearInterval(captureTimer);
   window.clearTimeout(reconnectTimer);
   window.clearTimeout(peerRestartTimer);
+  resetFrameWatchdog();
   window.clearTimeout(clearLiveCommentsTimer);
   for (const timers of notificationTimers.values()) {
     window.clearTimeout(timers.expiryTimer);
@@ -766,10 +878,12 @@ window.addEventListener("beforeunload", () => {
   closePeerConnection();
   stream?.getTracks().forEach((track) => track.stop());
   socket?.close();
+  releaseScreenWakeLock();
 });
 
 resizeOutput();
 startButton.addEventListener("click", startCamera);
 previousFilterButton.addEventListener("click", () => requestFilterStep(-1));
 nextFilterButton.addEventListener("click", () => requestFilterStep(1));
+void requestScreenWakeLock();
 connect();

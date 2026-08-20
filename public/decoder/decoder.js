@@ -2,6 +2,7 @@ const OUTPUT_WIDTH = 720;
 const OUTPUT_HEIGHT = 1280;
 const OUTPUT_ASPECT = OUTPUT_WIDTH / OUTPUT_HEIGHT;
 const RETURN_FPS = 24;
+const RETURN_MAX_BITRATE = 4_000_000;
 const RECONNECT_BASE_MS = 250;
 const RECONNECT_MAX_MS = 8_000;
 const STREAM_PATH = "/stream";
@@ -71,6 +72,7 @@ let peerConnection;
 let peerSessionId;
 let peerGeneration = 0;
 let returnStream;
+let returnTrack;
 let videoPumpHandle;
 let videoPumpUsesVideoCallback = false;
 let lastFallbackVideoTime = -1;
@@ -275,6 +277,9 @@ async function paintLatestReturnFrame() {
     const bitmap = await createImageBitmap(frame, { imageOrientation: "none" });
     returnContext.drawImage(bitmap, 0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT);
     bitmap.close();
+    // Manual canvas capture publishes exactly when the newest TD frame lands,
+    // without waiting for (or being throttled by) the document render clock.
+    returnTrack?.requestFrame?.();
   } catch (error) {
     console.warn("Ignoring undecodable TouchDesigner return frame", error);
   } finally {
@@ -287,7 +292,7 @@ async function paintLatestReturnFrame() {
 function scheduleReturnPaint() {
   if (returnPaintScheduled || returnDecodeInFlight) return;
   returnPaintScheduled = true;
-  window.requestAnimationFrame(paintLatestReturnFrame);
+  void paintLatestReturnFrame();
 }
 
 function sendSignal(message) {
@@ -390,6 +395,7 @@ function resetPeer() {
     for (const track of returnStream.getTracks()) track.stop();
     returnStream = undefined;
   }
+  returnTrack = undefined;
   remoteVideo.srcObject = null;
 }
 
@@ -531,10 +537,30 @@ async function acceptOffer(payload) {
   };
 
   try {
-    returnStream = returnCanvas.captureStream(RETURN_FPS);
-    const returnTrack = returnStream.getVideoTracks()[0];
+    returnStream = returnCanvas.captureStream(0);
+    returnTrack = returnStream.getVideoTracks()[0];
     if (!returnTrack) throw new Error("Return canvas did not provide a video track.");
-    peer.addTrack(returnTrack, returnStream);
+    if ("contentHint" in returnTrack) {
+      try {
+        returnTrack.contentHint = "motion";
+      } catch {
+        // Content hints are best-effort and are not supported uniformly.
+      }
+    }
+    const returnSender = peer.addTrack(returnTrack, returnStream);
+    // Seed the RTP pipeline with the black canvas before TD's first frame lands.
+    returnTrack.requestFrame?.();
+
+    try {
+      const parameters = returnSender.getParameters();
+      parameters.encodings = parameters.encodings?.length ? parameters.encodings : [{}];
+      parameters.encodings[0].maxFramerate = RETURN_FPS;
+      parameters.encodings[0].maxBitrate = RETURN_MAX_BITRATE;
+      parameters.degradationPreference = "maintain-framerate";
+      await returnSender.setParameters(parameters);
+    } catch {
+      // Encoding constraints are best-effort and are not supported uniformly.
+    }
 
     await peer.setRemoteDescription({ type: "offer", sdp });
     const queuedIce = pendingIceBySession.get(sessionId) ?? [];

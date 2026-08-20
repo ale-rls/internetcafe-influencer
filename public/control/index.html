@@ -84,6 +84,18 @@
           <p class="privacy-note">Sending is available only from this computer through the loopback interface.</p>
         </aside>
       </div>
+
+      <section class="panel health-panel" aria-labelledby="health-heading">
+        <div class="health-heading-row">
+          <div>
+            <p class="eyebrow">Installation health</p>
+            <h2 id="health-heading">Seat monitor</h2>
+          </div>
+          <p id="health-updated" class="health-updated" role="status">Loading health…</p>
+        </div>
+        <div id="seat-health-grid" class="seat-health-grid" aria-live="polite"></div>
+        <p class="health-note">Buffer is the recent average WebRTC jitter-buffer delay. A red seat needs operator attention; “—” means the browser has not reported that metric yet.</p>
+      </section>
     </main>
     <script type="module" src="./control.js"></script>
   </body>

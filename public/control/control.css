@@ -13,6 +13,7 @@ button, input, textarea { font: inherit; }
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
 .eyebrow { margin: 0 0 5px; color: #9b9ca3; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.04em; }
+h2 { margin: 3px 0 0; font-size: 24px; letter-spacing: -.025em; }
 .local-badge { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid #303137; border-radius: 999px; color: #b8b9bf; font-size: 12px; }
 .local-badge span { width: 7px; height: 7px; border-radius: 50%; background: #62d68b; box-shadow: 0 0 12px #62d68b; }
 
@@ -65,6 +66,26 @@ kbd { padding: 4px 7px; border: 1px solid #c4c5c9; border-radius: 6px; backgroun
 .notification-copy p { display: -webkit-box; overflow: hidden; margin: 2px 0 0; color: #34343a; font-size: 12px; line-height: 1.28; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .privacy-note { margin: 15px 6px 1px; color: #777980; font-size: 11px; line-height: 1.45; }
 
+.health-panel { margin-top: 22px; padding: 24px; }
+.health-heading-row { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.health-updated { margin: 0; color: #8d8f97; font-size: 12px; }
+.health-updated.is-error { color: #ff8f87; }
+.seat-health-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.seat-health-card { min-width: 0; border: 1px solid #34363c; border-top: 3px solid #62d68b; border-radius: 14px; padding: 13px; background: #202126; }
+.seat-health-card.is-warning, .seat-health-card.is-starting { border-top-color: #e2b45f; }
+.seat-health-card.is-offline, .seat-health-card.is-stale, .seat-health-card.is-stalled { border-top-color: #ef6c65; }
+.seat-health-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.seat-health-heading strong { font-size: 14px; }
+.seat-health-heading span { overflow: hidden; color: #95979e; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.seat-health-roles { display: flex; gap: 9px; margin: 10px 0 12px; color: #7e8088; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.role-status::before { display: inline-block; width: 5px; height: 5px; margin-right: 4px; border-radius: 50%; background: #55575e; content: ""; vertical-align: 1px; }
+.role-status.is-connected::before { background: #62d68b; box-shadow: 0 0 5px #62d68b; }
+.seat-health-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.seat-health-metrics div { min-width: 0; }
+.seat-health-metrics dt { color: #777982; font-size: 9px; text-transform: uppercase; }
+.seat-health-metrics dd { overflow: hidden; margin: 2px 0 0; font-size: 12px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.health-note { margin: 14px 2px 0; color: #777980; font-size: 11px; line-height: 1.45; }
+
 @media (max-width: 900px) {
   body { min-width: 0; }
   .shell { width: min(100% - 28px, 620px); padding-top: 24px; }
@@ -72,4 +93,9 @@ kbd { padding: 4px 7px; border: 1px solid #c4c5c9; border-radius: 6px; backgroun
   .preview-panel { position: static; }
   .phone-frame { max-width: 360px; margin: auto; }
   .segmented { grid-template-columns: repeat(3, 1fr); }
+  .seat-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 480px) {
+  .seat-health-grid { grid-template-columns: 1fr; }
 }

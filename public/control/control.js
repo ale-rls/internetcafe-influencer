@@ -1,3 +1,5 @@
+import { updateSeatDiagnostics } from "./health-dashboard.js";
+
 const form = document.querySelector("#notification-form");
 const senderInput = document.querySelector("#sender");
 const messageInput = document.querySelector("#message");
@@ -9,6 +11,9 @@ const previewIcon = document.querySelector("#preview-icon");
 const previewApp = document.querySelector("#preview-app");
 const previewSender = document.querySelector("#preview-sender");
 const previewMessage = document.querySelector("#preview-message");
+const seatHealthGrid = document.querySelector("#seat-health-grid");
+const healthUpdated = document.querySelector("#health-updated");
+let previousSeatDiagnostics = new Map();
 
 const APP_PRESENTATION = {
   instagram: { label: "Instagram", glyph: "◎" },
@@ -39,14 +44,68 @@ function setStatus(message, kind = "") {
 async function refreshConnections() {
   try {
     const response = await fetch("/healthz", { cache: "no-store" });
-    if (!response.ok) return;
+    if (!response.ok) throw new Error(`health request failed (${response.status})`);
     const health = await response.json();
     for (const dot of document.querySelectorAll("[data-seat]")) {
       dot.classList.toggle("is-connected", health.seats?.[dot.dataset.seat]?.phone === true);
     }
+    const diagnostics = updateSeatDiagnostics(health, previousSeatDiagnostics);
+    previousSeatDiagnostics = diagnostics.nextBySeat;
+    renderSeatHealth(diagnostics.rows);
+    healthUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    healthUpdated.classList.remove("is-error");
   } catch {
-    // The send action reports connection failures; status dots are best-effort.
+    healthUpdated.textContent = "Health endpoint unavailable";
+    healthUpdated.classList.add("is-error");
   }
+}
+
+function metric(value, suffix = "") {
+  return Number.isFinite(value) ? `${value.toFixed(1)}${suffix}` : "—";
+}
+
+function roleStatus(label, connected) {
+  const item = document.createElement("span");
+  item.className = connected ? "role-status is-connected" : "role-status";
+  item.textContent = label;
+  return item;
+}
+
+function renderSeatHealth(rows) {
+  const fragment = document.createDocumentFragment();
+  for (const row of rows) {
+    const card = document.createElement("article");
+    card.className = `seat-health-card is-${row.state}`;
+
+    const heading = document.createElement("div");
+    heading.className = "seat-health-heading";
+    const seatLabel = document.createElement("strong");
+    seatLabel.textContent = `Seat ${row.seat}`;
+    const stateLabel = document.createElement("span");
+    stateLabel.textContent = row.stateLabel;
+    heading.append(seatLabel, stateLabel);
+
+    const roles = document.createElement("div");
+    roles.className = "seat-health-roles";
+    roles.append(
+      roleStatus("Phone", row.phoneConnected),
+      roleStatus("Decoder", row.decoderConnected),
+      roleStatus("TD", row.touchConnected),
+    );
+
+    const metrics = document.createElement("dl");
+    metrics.className = "seat-health-metrics";
+    metrics.innerHTML = `
+      <div><dt>Return</dt><dd>${metric(row.returnFps, " fps")}</dd></div>
+      <div><dt>Buffer</dt><dd>${metric(row.bufferMs, " ms")}</dd></div>
+      <div><dt>Last frame</dt><dd>${metric(row.frameAgeSeconds, " s")}</dd></div>
+      <div><dt>Stats age</dt><dd>${metric(row.statsAgeSeconds, " s")}</dd></div>
+      <div><dt>Limit</dt><dd>${row.qualityLimitation ?? "—"}</dd></div>
+    `;
+    card.append(heading, roles, metrics);
+    fragment.append(card);
+  }
+  seatHealthGrid.replaceChildren(fragment);
 }
 
 async function sendNotification() {

@@ -533,6 +533,7 @@ test("primary and local listeners share WebSocket routing and shutdown", async (
   const localControlHtml = await localControl.text();
   assert.match(localControlHtml, /Notification control/);
   assert.match(localControlHtml, /data-seat="7"/);
+  assert.match(localControlHtml, /Seat monitor/);
 
   const decoder = await connectRole(localBaseUrl, "decoder");
   const phone = await connectRole(baseUrl, "phone");

@@ -175,6 +175,61 @@ Record the printed process ID. Stop that process later with:
 Stop-Process -Id <PROCESS_ID>
 ```
 
+### Run the server as a supervised service
+
+For an exhibition, use either NSSM or Task Scheduler instead of the hidden
+one-off process above. Do not configure both methods for the same checkout.
+
+With [NSSM](https://nssm.cc/) installed, run an elevated PowerShell and replace
+the project path below. Point NSSM directly at Node so it can supervise the
+actual long-running process:
+
+```powershell
+$projectDir = "C:\installations\internetcafe-influencer"
+$nodeExe = (Get-Command node).Source
+nssm install InternetCafeInfluencer $nodeExe "--env-file-if-exists=.env server/index.js"
+nssm set InternetCafeInfluencer AppDirectory $projectDir
+nssm set InternetCafeInfluencer AppExit Default Restart
+nssm set InternetCafeInfluencer AppRestartDelay 3000
+nssm set InternetCafeInfluencer Start SERVICE_AUTO_START
+nssm start InternetCafeInfluencer
+```
+
+Verify it with `Get-Service InternetCafeInfluencer` and
+`Invoke-RestMethod http://127.0.0.1:8080/healthz`. NSSM's `AppExit Default
+Restart` setting restarts Node after an unexpected exit, and automatic start
+brings it back after reboot.
+
+Without NSSM, create a startup task in an elevated PowerShell:
+
+```powershell
+$projectDir = "C:\installations\internetcafe-influencer"
+$nodeExe = (Get-Command node).Source
+$action = New-ScheduledTaskAction `
+  -Execute $nodeExe `
+  -Argument "--env-file-if-exists=.env server/index.js" `
+  -WorkingDirectory $projectDir
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$settings = New-ScheduledTaskSettingsSet `
+  -RestartCount 999 `
+  -RestartInterval (New-TimeSpan -Minutes 1) `
+  -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
+  -StartWhenAvailable
+Register-ScheduledTask `
+  -TaskName "InternetCafeInfluencer" `
+  -Action $action `
+  -Trigger $trigger `
+  -Settings $settings `
+  -User "SYSTEM" `
+  -RunLevel Highest
+Start-ScheduledTask -TaskName "InternetCafeInfluencer"
+```
+
+In Task Scheduler, confirm **If the task fails, restart every 1 minute** and
+**Run whether user is logged on or not**. After either setup, stop the service
+or task before running a second foreground server, otherwise the ports will
+already be occupied.
+
 ## 7. Trust the CA on an iPhone
 
 Transfer only `certs/internetcafe-windows-rootCA-DER.cer` to the iPhone using
@@ -198,6 +253,15 @@ https://192.168.178.121:8443/healthz
 ```
 
 The response should report `"transport":"https/wss"`.
+
+### Trust the CA on Android
+
+Transfer only `certs/internetcafe-windows-rootCA-DER.cer`. On the phone, open
+**Settings > Security > Install certificates > CA certificate** and select the
+file. Manufacturer labels can differ; search Settings for “CA certificate” if
+needed. Android warns that network traffic can be inspected by a user CA, so
+use this installation-only CA and never transfer the private key. Chrome should
+then open the exact `https://<LAN_IP>:8443/healthz` address without a warning.
 
 ## 8. Test seat 1
 
@@ -232,6 +296,19 @@ The live health response should contain:
 
 The received and forwarded frame counters should rise continuously with zero
 persistent backpressure drops.
+
+Keep `http://127.0.0.1:8080/control/` open as the operator view. Each seat card
+shows role connectivity, return FPS, last decoded-frame age, WebRTC-stats age,
+and recent average jitter-buffer delay. A red card means the phone is offline,
+its statistics are stale, or decoded return frames have stopped for five
+seconds. Missing browser metrics appear as “—” rather than making the seat
+look failed.
+
+Before exhibition day, leave all seven charged phones running for at least one
+hour. Ensure airflow is not blocked, watch for falling FPS or stale frames, and
+inspect `webrtcStats` in `/healthz` for `qualityLimitation`. A persistent `cpu`
+limitation suggests encoder or thermal pressure; reduce camera resolution to
+what the artwork actually needs before accepting a degraded all-day setup.
 
 ### v2 return-stream diagnostics
 
