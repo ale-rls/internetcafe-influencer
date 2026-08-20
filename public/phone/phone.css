@@ -305,6 +305,8 @@ body.transport-webrtc #webrtc-output { display: block; }
   letter-spacing: .025em;
 }
 
+.hud[hidden] { display: none; }
+
 .title-row, .metrics { display: flex; justify-content: space-between; gap: 16px; }
 .title-row { font-weight: 700; }
 .status { margin: 7px 0; color: #aab2c9; }

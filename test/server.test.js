@@ -95,6 +95,7 @@ test("HTTP routes expose health, QR, static phone content, and expected redirect
   const phone = await fetch(`${baseUrl}/phone/?seat=1`);
   assert.equal(phone.status, 200);
   assert.match(phone.headers.get("content-type"), /^text\/html/);
+  assert.match(await phone.text(), /<aside id="fps-overlay" class="hud"/);
 
   const mediapipeModule = await fetch(`${baseUrl}/vendor/mediapipe/vision_bundle.mjs`);
   assert.equal(mediapipeModule.status, 200);
@@ -311,6 +312,13 @@ test("TouchDesigner state is seat-specific and snapshots to a reconnecting phone
     enabled: false,
   });
 
+  const fpsOverlayMessage = nextMessage(phone);
+  touchOutput.send(JSON.stringify({ type: "fps-overlay-state", enabled: false }));
+  assert.deepEqual(JSON.parse((await fpsOverlayMessage).data.toString()), {
+    type: "fps-overlay-state",
+    enabled: false,
+  });
+
   const filterMessage = nextMessage(phone);
   trackingSink.send(JSON.stringify({
     type: "filter-state",
@@ -331,7 +339,7 @@ test("TouchDesigner state is seat-specific and snapshots to a reconnecting phone
 
   phone = new WebSocket(`${baseUrl.replace("http", "ws")}/stream`);
   await once(phone, "open");
-  const reconnectMessages = waitForJsonMessages(phone, 3);
+  const reconnectMessages = waitForJsonMessages(phone, 4);
   phone.send(JSON.stringify({ type: "hello", role: "phone", seat: 2 }));
   const messages = await reconnectMessages;
   assert.deepEqual(messages.find(({ type }) => type === "hello-ack"), {
@@ -341,6 +349,10 @@ test("TouchDesigner state is seat-specific and snapshots to a reconnecting phone
   });
   assert.deepEqual(messages.find(({ type }) => type === "live-ui-state"), {
     type: "live-ui-state",
+    enabled: false,
+  });
+  assert.deepEqual(messages.find(({ type }) => type === "fps-overlay-state"), {
+    type: "fps-overlay-state",
     enabled: false,
   });
   assert.deepEqual(messages.find(({ type }) => type === "filter-state"), {

@@ -18,11 +18,17 @@ Create these exact children inside `PhoneSender`:
 | `PhoneSenderExt` | Text DAT | `../scripts/v2/PhoneSenderExt.py` |
 
 Attach `PhoneSenderExt` through **Customize Component**, then re-init the
-extension after all exact-name children exist. It creates Seat, Host, Port,
-JPEG Quality, Output FPS, sender-benchmark controls, Active, and Live UI. Each
-sender defaults to JPEG quality `0.7` at a maximum of 24 fps. Existing
-components still carrying the old 10 fps default are migrated to 24 fps when
-the extension is re-initialized.
+extension after all exact-name children exist. It creates two custom parameter
+pages:
+
+- **Control**: Active, Seat, Live UI, and FPS Overlay
+- **Settings**: Host, Port, JPEG Quality, Output FPS, Benchmark Samples, and
+  Benchmark Sender
+
+Existing parameters are moved between pages without being recreated, so their
+saved values and parameter modes remain intact. Each sender defaults to JPEG
+quality `0.7` at a maximum of 24 fps. Existing components still carrying the
+old 10 fps default are migrated to 24 fps when the extension is re-initialized.
 
 The Execute DAT schedules output from TouchDesigner's absolute frame index.
 Each seat receives a different fixed-point phase, including at fractional
@@ -87,3 +93,16 @@ current Live UI state so the influencer server can refresh the snapshot it
 sends when a phone reconnects. Phone filter requests enter TouchDesigner over
 the existing `SeatInput/ws_tracking` connection instead; see
 [`browser-face-tracking.md`](browser-face-tracking.md#phone-filter-controls).
+
+## FPS overlay
+
+`Showfps` controls the complete FPS status card on the phone, including its
+title, seat, connection status, and uplink/downlink values. Changing the toggle
+publishes the current state over `ws_output`:
+
+```json
+{"type":"fps-overlay-state","enabled":true}
+```
+
+The component republishes this state after WebSocket registration, and the
+server caches it per seat so reconnecting phones receive the latest setting.

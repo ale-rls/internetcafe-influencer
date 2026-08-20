@@ -149,6 +149,9 @@ export class FrameRouter {
     if (client.role === "touch-output" && message?.type === "live-ui-state") {
       return this.handleLiveUiState(client, message);
     }
+    if (client.role === "touch-output" && message?.type === "fps-overlay-state") {
+      return this.handleFpsOverlayState(client, message);
+    }
     if (
       (client.role === "tracking-sink" || client.role === "touch-output")
       && message?.type === "filter-state"
@@ -365,6 +368,15 @@ export class FrameRouter {
     this.sendTextToRole(client.seat, "phone", state.liveUi);
   }
 
+  handleFpsOverlayState(client, message) {
+    if (typeof message.enabled !== "boolean") {
+      return this.reject(client.socket, "fps-overlay-state enabled must be boolean");
+    }
+    const state = this.controlState(client.seat);
+    state.fpsOverlay = { type: "fps-overlay-state", enabled: message.enabled };
+    this.sendTextToRole(client.seat, "phone", state.fpsOverlay);
+  }
+
   handleFilterState(client, message) {
     const index = message.index;
     const count = message.count;
@@ -449,6 +461,7 @@ export class FrameRouter {
     if (role === "phone") {
       const state = this.controlStates.get(seat);
       if (state?.liveUi) this.sendTextToRole(seat, "phone", state.liveUi);
+      if (state?.fpsOverlay) this.sendTextToRole(seat, "phone", state.fpsOverlay);
       if (state?.filter) this.sendTextToRole(seat, "phone", state.filter);
       this.replayRecentComments(seat);
     }

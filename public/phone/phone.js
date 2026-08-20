@@ -32,6 +32,7 @@ const startPanel = document.querySelector("#start-panel");
 const startButton = document.querySelector("#start-camera");
 const cameraMessage = document.querySelector("#camera-message");
 const statusElement = document.querySelector("#connection-status");
+const fpsOverlayElement = document.querySelector("#fps-overlay");
 const uplinkElement = document.querySelector("#uplink-fps");
 const downlinkElement = document.querySelector("#downlink-fps");
 const notificationRegion = document.querySelector("#notification-region");
@@ -213,6 +214,9 @@ function receiveControlMessage(rawMessage) {
       break;
     case "live-ui-state":
       if (typeof payload.enabled === "boolean") setLiveUiEnabled(payload.enabled);
+      break;
+    case "fps-overlay-state":
+      if (typeof payload.enabled === "boolean") setFpsOverlayEnabled(payload.enabled);
       break;
     case "filter-state":
       receiveFilterState(payload);
@@ -510,6 +514,10 @@ function setLiveUiEnabled(enabled) {
     comment.classList.add("is-leaving");
   }
   clearLiveCommentsTimer = window.setTimeout(() => liveCommentFeed.replaceChildren(), LIVE_UI_TRANSITION_MS);
+}
+
+function setFpsOverlayEnabled(enabled) {
+  fpsOverlayElement.hidden = !enabled;
 }
 
 function receiveFilterState(payload) {

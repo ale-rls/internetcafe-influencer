@@ -20,9 +20,19 @@ PARAM_DEFAULTS = {
 	'Benchmarksamples': 30,
 	'Active': False,
 	'Liveui': True,
+	'Showfps': True,
 }
 
 LEGACY_FILTER_PARAMETERS = ('Filterindex', 'Filtercount', 'Filtername')
+CONTROL_PARAMETERS = ('Active', 'Seat', 'Liveui', 'Showfps')
+SETTINGS_PARAMETERS = (
+	'Host',
+	'Port',
+	'Jpegquality',
+	'Outputfps',
+	'Benchmarksamples',
+	'Benchmarksender',
+)
 
 
 class ParameterManager:
@@ -35,37 +45,49 @@ class ParameterManager:
 				return page
 		return None
 
+	def _setup_pages(self):
+		control_page = self._get_page('Control')
+		legacy_page = self._get_page('Phone Sender')
+		if control_page is None and legacy_page is not None:
+			legacy_page.name = 'Control'
+			control_page = legacy_page
+		elif control_page is None:
+			control_page = self.ownerComp.appendCustomPage('Control')
+
+		settings_page = self._get_page('Settings')
+		if settings_page is None:
+			settings_page = self.ownerComp.appendCustomPage('Settings')
+		return control_page, settings_page
+
 	def setup(self):
-		page = self._get_page('Phone Sender')
-		if not page:
-			page = self.ownerComp.appendCustomPage('Phone Sender')
+		control_page, settings_page = self._setup_pages()
 
 		par = self.ownerComp.par
 
 		if not hasattr(par, 'Seat'):
-			p = page.appendInt('Seat', label='Seat')[0]
+			p = control_page.appendInt('Seat', label='Seat')[0]
 			p.default = p.val = PARAM_DEFAULTS['Seat']
 			p.min = 1
 			p.clampMin = True
 
 		if not hasattr(par, 'Host'):
-			p = page.appendStr('Host', label='Host')[0]
+			p = settings_page.appendStr('Host', label='Host')[0]
 			p.default = p.val = PARAM_DEFAULTS['Host']
 
 		if not hasattr(par, 'Port'):
-			p = page.appendInt('Port', label='Port')[0]
+			p = settings_page.appendInt('Port', label='Port')[0]
 			p.default = p.val = PARAM_DEFAULTS['Port']
 			p.min, p.max = 1, 65535
 			p.clampMin = p.clampMax = True
 
 		if not hasattr(par, 'Jpegquality'):
-			p = page.appendFloat('Jpegquality', label='JPEG Quality')[0]
+			p = settings_page.appendFloat('Jpegquality', label='JPEG Quality')[0]
 			p.default = p.val = PARAM_DEFAULTS['Jpegquality']
 			p.min, p.max = 0.1, 1.0
 			p.clampMin = p.clampMax = True
 
 		if not hasattr(par, 'Outputfps'):
-			p = page.appendFloat('Outputfps', label='Output FPS')[0]
+			p = settings_page.appendFloat('Outputfps', label='Output FPS')[0]
 			p.default = p.val = PARAM_DEFAULTS['Outputfps']
 			p.min, p.max = 1.0, PARAM_DEFAULTS['Outputfps']
 			p.clampMin = p.clampMax = True
@@ -79,21 +101,25 @@ class ParameterManager:
 			p.clampMin = p.clampMax = True
 
 		if not hasattr(par, 'Benchmarksamples'):
-			p = page.appendInt('Benchmarksamples', label='Benchmark Samples')[0]
+			p = settings_page.appendInt('Benchmarksamples', label='Benchmark Samples')[0]
 			p.default = p.val = PARAM_DEFAULTS['Benchmarksamples']
 			p.min, p.max = 5, 120
 			p.clampMin = p.clampMax = True
 
 		if not hasattr(par, 'Benchmarksender'):
-			page.appendPulse('Benchmarksender', label='Benchmark Sender')
+			settings_page.appendPulse('Benchmarksender', label='Benchmark Sender')
 
 		if not hasattr(par, 'Active'):
-			p = page.appendToggle('Active', label='Active')[0]
+			p = control_page.appendToggle('Active', label='Active')[0]
 			p.default = p.val = PARAM_DEFAULTS['Active']
 
 		if not hasattr(par, 'Liveui'):
-			p = page.appendToggle('Liveui', label='Live UI')[0]
+			p = control_page.appendToggle('Liveui', label='Live UI')[0]
 			p.default = p.val = PARAM_DEFAULTS['Liveui']
+
+		if not hasattr(par, 'Showfps'):
+			p = control_page.appendToggle('Showfps', label='FPS Overlay')[0]
+			p.default = p.val = PARAM_DEFAULTS['Showfps']
 
 		# Remove parameters created by the first filter-control implementation.
 		# Filter state now comes directly from the authoritative Switch TOP.
@@ -105,13 +131,22 @@ class ParameterManager:
 				except Exception:
 					pass
 
+		# Move existing parameters without recreating them so saved values,
+		# expressions, exports, and binds survive the page migration.
+		for name in CONTROL_PARAMETERS:
+			getattr(par, name).page = control_page
+		for name in SETTINGS_PARAMETERS:
+			getattr(par, name).page = settings_page
+		control_page.sort(*CONTROL_PARAMETERS)
+		settings_page.sort(*SETTINGS_PARAMETERS)
+
 	def setup_param_exec(self):
 		param_exec = self.ownerComp.op('param_exec')
 		if param_exec is None:
 			return
 
 		param_exec.par.op = self.ownerComp.path
-		param_exec.par.pars = 'Active Seat Host Port Liveui Benchmarksender'
+		param_exec.par.pars = 'Active Seat Host Port Liveui Showfps Benchmarksender'
 		param_exec.par.valuechange = True
 		param_exec.par.custom = True
 		param_exec.par.builtin = False
@@ -206,9 +241,16 @@ class PhoneSenderExt:
 			'enabled': bool(self.ownerComp.par.Liveui.eval()),
 		})
 
+	def SendFpsOverlayState(self):
+		return self._sendControlMessage({
+			'type': 'fps-overlay-state',
+			'enabled': bool(self.ownerComp.par.Showfps.eval()),
+		})
+
 	def SendControlState(self):
 		"""Publish PhoneSender-owned state after WebSocket registration."""
 		self.SendLiveUiState()
+		self.SendFpsOverlayState()
 
 	def StartSenderBenchmark(self):
 		send_execute = self.ownerComp.op('send_execute')
@@ -236,5 +278,7 @@ class PhoneSenderExt:
 			self.Start()
 		elif par.name == 'Liveui':
 			self.SendLiveUiState()
+		elif par.name == 'Showfps':
+			self.SendFpsOverlayState()
 		elif par.name == 'Benchmarksender':
 			self.StartSenderBenchmark()

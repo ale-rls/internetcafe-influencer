@@ -217,6 +217,35 @@ test("FrameRouter does not replay comments received while Live UI is disabled", 
   assert.equal(router.snapshot().counters.replayedLiveComments, 0);
 });
 
+test("FrameRouter forwards and replays the per-seat FPS overlay state", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const touchOutput = new FakeSocket();
+  const phone = new FakeSocket();
+  register(router, touchOutput, "touch-output", "3");
+  register(router, phone, "phone", "3");
+
+  touchOutput.emit("message", Buffer.from(JSON.stringify({
+    type: "fps-overlay-state",
+    enabled: false,
+  })), false);
+
+  assert.deepEqual(JSON.parse(phone.sent.at(-1).data), {
+    type: "fps-overlay-state",
+    enabled: false,
+  });
+  assert.deepEqual(router.snapshot().controlStates["3"].fpsOverlay, {
+    type: "fps-overlay-state",
+    enabled: false,
+  });
+
+  const replacementPhone = new FakeSocket();
+  register(router, replacementPhone, "phone", "3");
+  assert.deepEqual(replacementPhone.sent.map(({ data }) => JSON.parse(data)), [
+    { type: "hello-ack", role: "phone", seat: "3" },
+    { type: "fps-overlay-state", enabled: false },
+  ]);
+});
+
 test("FrameRouter relays WebRTC signaling only between matching-seat peers", () => {
   const router = new FrameRouter({ logger: { info() {}, warn() {} } });
   const phone = new FakeSocket();
