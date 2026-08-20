@@ -47,9 +47,9 @@ Use the `IPv4 Address` from the active Ethernet or Wi-Fi adapter. Do not use a
 virtual adapter, `127.0.0.1`, or an address beginning with `169.254`.
 
 The setup performed on 23 July 2026 used the wired Ethernet address
-`192.168.178.121`. Because the address is assigned by DHCP, check it again
-after changing networks or restarting the router. If it changes, update
-`.env` and regenerate the server certificate.
+`192.168.178.121`. Because the address is assigned by DHCP, it can change after
+changing networks or restarting the router. The automatic startup configuration
+below detects that change and refreshes the certificate.
 
 ## 3. Install mkcert and create the certificate
 
@@ -100,7 +100,14 @@ PORT=8443
 PHONE_BASE_URL=https://192.168.178.121:8443
 TLS_CERT_FILE=./certs/camera-windows.pem
 TLS_KEY_FILE=./certs/camera-windows-key.pem
+AUTO_LAN_IP=true
 ```
+
+With `AUTO_LAN_IP=true`, startup replaces only the hostname in
+`PHONE_BASE_URL` in memory and refreshes the mkcert certificate if the detected
+address is not already covered. It does not rewrite `.env`. If both Ethernet
+and Wi-Fi are active and the wrong one is selected, add
+`LAN_IP=192.168.178.121` with the address reachable by the phones.
 
 With TLS configured, the server also starts the loopback-only TouchDesigner
 bridge at `http://127.0.0.1:8080` and `ws://127.0.0.1:8080`. Port 8080 is not
@@ -141,10 +148,15 @@ pnpm start
 Expected startup messages:
 
 ```text
+[startup] using LAN IPv4 192.168.178.121 from Ethernet
 Internetcafe Influencer listening on https://localhost:8443
 TouchDesigner bridge listening on http://127.0.0.1:8080
 Phone URL base: https://192.168.178.121:8443
 ```
+
+When the address changes, a preceding `[startup] refreshing HTTPS certificate`
+message is also expected. `mkcert` must remain installed and available on
+`PATH` for that refresh.
 
 Verify the local health endpoint in another PowerShell window:
 

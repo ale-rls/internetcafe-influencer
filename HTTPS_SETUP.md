@@ -38,12 +38,19 @@ the certificate whenever that address changes.
 cp .env.example .env
 ```
 
-Edit `.env` so `PHONE_BASE_URL` uses the same LAN IP that was passed to
-`mkcert`, for example:
+Enable automatic LAN address handling in `.env`:
 
 ```dotenv
 PHONE_BASE_URL=https://192.168.1.50:8443
+AUTO_LAN_IP=true
 ```
+
+The address in `PHONE_BASE_URL` is used only as a seed. On every start, the
+server selects a physical LAN IPv4 address, replaces the hostname in memory,
+and checks whether the configured certificate covers it. If necessary it runs
+`mkcert` to refresh that certificate. The `.env` file is not rewritten. Set
+`LAN_IP=<address>` when multiple active physical adapters make the choice
+ambiguous, or set `AUTO_LAN_IP=false` to keep fully manual behavior.
 
 Keep `HOST=0.0.0.0`, `PORT=8443`, `TLS_CERT_FILE`, and `TLS_KEY_FILE` as
 shown unless the installation needs different values. The TLS configuration
@@ -58,6 +65,8 @@ plaintext camera traffic cannot accidentally be exposed to the LAN.
 ```sh
 pnpm start
 ```
+
+The startup log prints the selected interface and the final phone URL.
 
 With the TLS variables present, the health endpoint reports `"transport":
 "https/wss"` and the active loopback listener under `"localHttp"`.

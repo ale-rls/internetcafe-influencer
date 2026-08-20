@@ -64,6 +64,11 @@ Use the `IPv4 Address` belonging to the active Ethernet or Wi-Fi adapter. Do
 not use `127.0.0.1`, an address beginning with `169.254`, or an address from a
 VPN or virtual adapter. The phones must be able to reach this address.
 
+This is primarily a verification step. With `AUTO_LAN_IP=true`, the server
+detects this address on every start and uses it for the phone URL. If the
+computer has more than one active physical adapter, set `LAN_IP` in `.env` to
+the address that the phones can reach.
+
 ### 3. Create the HTTPS certificate
 
 Install mkcert, then create a local CA and a certificate containing the new
@@ -105,6 +110,7 @@ PORT=8443
 PHONE_BASE_URL=https://192.168.1.50:8443
 TLS_CERT_FILE=./certs/camera-windows.pem
 TLS_KEY_FILE=./certs/camera-windows-key.pem
+AUTO_LAN_IP=true
 
 LOCAL_HTTP_ENABLED=true
 LOCAL_HTTP_HOST=127.0.0.1
@@ -114,8 +120,11 @@ LOCAL_HTTP_PORT=8080
 RELAY_SHARED_TOKEN=replace-with-an-installation-secret
 ```
 
-`PHONE_BASE_URL` must contain exactly the same IP address that was included in
-the certificate.
+When `AUTO_LAN_IP=true`, `PHONE_BASE_URL` is a seed value: its protocol, port,
+and path are preserved, but its hostname is replaced in memory with the
+detected address. At startup, the server checks the configured certificate and
+runs `mkcert` to refresh it only if it does not contain that address. The
+`.env` file itself is not rewritten.
 
 ### 5. Allow phone connections through Windows Firewall
 
@@ -171,14 +180,13 @@ For additional platform notes and the TouchDesigner acceptance test, see
 ## Generate the QR code for a new computer or IP address
 
 The QR code is generated dynamically; there is no QR image file to rebuild.
-Its destination comes from `PHONE_BASE_URL` in `.env`.
+Its destination comes from the runtime `PHONE_BASE_URL`.
 
-1. Find the new computer's LAN IPv4 address with `ipconfig`.
-2. Generate a new server certificate containing that address, following step
-   3 above.
-3. Put the same address in `PHONE_BASE_URL` in `.env`.
-4. Restart the Node server.
-5. Open `http://127.0.0.1:8080/qr/?seat=1` on the computer. The displayed QR
+1. Restart the Node server. With `AUTO_LAN_IP=true`, startup detects the new
+   address and refreshes the mkcert certificate automatically.
+2. Check the logged `Phone URL base` value. If the wrong physical adapter was
+   selected, set `LAN_IP=<reachable-address>` in `.env` and restart.
+3. Open `http://127.0.0.1:8080/qr/?seat=1` on the computer. The displayed QR
    code will now point to the new HTTPS address.
 
 Use `seat=1` through `seat=7` to generate a separate connection QR for each
@@ -186,8 +194,7 @@ seat. The short seat-1 alias is `http://127.0.0.1:8080/qrcode`.
 
 If this is a completely new computer, its mkcert installation creates a new
 root CA, so the phones must trust the newly exported CA. If only the IP address
-changed on the same computer, regenerate the server certificate and update
-`.env`; the already trusted root CA remains the same.
+changed on the same computer, the already trusted root CA remains the same.
 
 ## Routes
 

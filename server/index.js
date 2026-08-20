@@ -6,6 +6,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { loadConfig } from "./config.js";
 import { CommentRelayReceiver } from "./comment-relay.js";
 import { FrameRouter } from "./frame-router.js";
+import { prepareLanEnvironment } from "./lan-startup.js";
 import { createQrPage } from "./qr.js";
 import { createRequestHandler } from "./static.js";
 
@@ -170,7 +171,7 @@ export function createInternetCafeServer(config = loadConfig(), { logger = conso
 }
 
 async function main() {
-  const runtime = createInternetCafeServer();
+  const runtime = createInternetCafeServer(loadConfig(prepareLanEnvironment()));
   const address = await runtime.start();
   const protocol = runtime.config.tlsCertFile ? "https" : "http";
   const host = runtime.config.host === "0.0.0.0" ? "localhost" : runtime.config.host;

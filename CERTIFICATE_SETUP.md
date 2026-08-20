@@ -14,7 +14,8 @@ local CA and a server certificate. Run all commands from the repository root.
   address beginning with `169.254` as the LAN IP.
 - Never copy the server private key to a phone or commit it to Git.
 - Check the LAN IP again after changing networks or restarting the router. If
-  it changes, regenerate the certificate and update `.env`.
+  it changes, startup can regenerate the certificate automatically when
+  `AUTO_LAN_IP=true`.
 
 Certificate files and `.env` are already ignored by this repository.
 
