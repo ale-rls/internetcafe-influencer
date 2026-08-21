@@ -33,6 +33,7 @@ function blankCounters() {
     forwardedControlMessages: 0,
     droppedControlNoDestination: 0,
     rateLimitedFilterSteps: 0,
+    rateLimitedSliderChanges: 0,
     replayedLiveComments: 0,
   };
 }
@@ -42,6 +43,7 @@ export class FrameRouter {
     maxBufferedBytes = 1024 * 1024,
     helloTimeoutMs = 5_000,
     filterStepIntervalMs = 150,
+    sliderChangeIntervalMs = 33,
     commentReplayLimit = 6,
     commentReplayMaxAgeMs = 120_000,
     logger = console,
@@ -49,12 +51,14 @@ export class FrameRouter {
     this.maxBufferedBytes = maxBufferedBytes;
     this.helloTimeoutMs = helloTimeoutMs;
     this.filterStepIntervalMs = filterStepIntervalMs;
+    this.sliderChangeIntervalMs = sliderChangeIntervalMs;
     this.commentReplayLimit = commentReplayLimit;
     this.commentReplayMaxAgeMs = commentReplayMaxAgeMs;
     this.logger = logger;
     this.seats = new Map();
     this.controlStates = new Map();
     this.lastFilterStepBySeat = new Map();
+    this.sliderChangeBySeat = new Map();
     this.commentReplayAfterBySeat = new Map();
     this.recentComments = [];
     this.clients = new Map();
@@ -130,6 +134,9 @@ export class FrameRouter {
     if (client.role === "phone" && message?.type === "filter-step") {
       return this.handleFilterStep(client, message);
     }
+    if (client.role === "phone" && message?.type === "slider-change") {
+      return this.handleSliderChange(client, message);
+    }
     if (
       (client.role === "phone" || client.role === "webrtc-bridge")
       && (
@@ -157,6 +164,12 @@ export class FrameRouter {
       && message?.type === "filter-state"
     ) {
       return this.handleFilterState(client, message);
+    }
+    if (
+      (client.role === "tracking-sink" || client.role === "touch-output")
+      && message?.type === "slider-state"
+    ) {
+      return this.handleSliderState(client, message);
     }
     return this.reject(client.socket, `${client.role} cannot send this text message`);
   }
@@ -355,6 +368,43 @@ export class FrameRouter {
     this.sendTextToRole(client.seat, "tracking-sink", { type: "filter-step", delta: message.delta });
   }
 
+  handleSliderChange(client, message) {
+    if (typeof message.value !== "number" || !Number.isFinite(message.value) || message.value < 0 || message.value > 1) {
+      return this.reject(client.socket, "slider-change value must be a finite number from 0 to 1");
+    }
+
+    const now = Date.now();
+    let update = this.sliderChangeBySeat.get(client.seat);
+    if (!update) {
+      update = { lastSentAt: 0, pendingValue: undefined, timer: null };
+      this.sliderChangeBySeat.set(client.seat, update);
+    }
+
+    const elapsed = now - update.lastSentAt;
+    if (!update.timer && elapsed >= this.sliderChangeIntervalMs) {
+      update.lastSentAt = now;
+      this.sendSliderChange(client.seat, message.value);
+      return;
+    }
+
+    update.pendingValue = message.value;
+    this.counters.rateLimitedSliderChanges += 1;
+    if (update.timer) return;
+
+    update.timer = setTimeout(() => {
+      update.timer = null;
+      const value = update.pendingValue;
+      update.pendingValue = undefined;
+      update.lastSentAt = Date.now();
+      this.sendSliderChange(client.seat, value);
+    }, Math.max(0, this.sliderChangeIntervalMs - elapsed));
+    update.timer.unref?.();
+  }
+
+  sendSliderChange(seat, value) {
+    this.sendTextToRole(seat, "tracking-sink", { type: "slider-change", value });
+  }
+
   handleLiveUiState(client, message) {
     if (typeof message.enabled !== "boolean") {
       return this.reject(client.socket, "live-ui-state enabled must be boolean");
@@ -400,6 +450,15 @@ export class FrameRouter {
       ...(message.name ? { name: message.name } : {}),
     };
     this.sendTextToRole(client.seat, "phone", state.filter);
+  }
+
+  handleSliderState(client, message) {
+    if (typeof message.value !== "number" || !Number.isFinite(message.value) || message.value < 0 || message.value > 1) {
+      return this.reject(client.socket, "slider-state value must be a finite number from 0 to 1");
+    }
+    const state = this.controlState(client.seat);
+    state.slider = { type: "slider-state", value: message.value };
+    this.sendTextToRole(client.seat, "phone", state.slider);
   }
 
   controlState(seat) {
@@ -463,6 +522,7 @@ export class FrameRouter {
       if (state?.liveUi) this.sendTextToRole(seat, "phone", state.liveUi);
       if (state?.fpsOverlay) this.sendTextToRole(seat, "phone", state.fpsOverlay);
       if (state?.filter) this.sendTextToRole(seat, "phone", state.filter);
+      if (state?.slider) this.sendTextToRole(seat, "phone", state.slider);
       this.replayRecentComments(seat);
     }
     if (role === "phone" || role === "webrtc-bridge") {
@@ -618,6 +678,8 @@ export class FrameRouter {
     this.seats.clear();
     this.controlStates.clear();
     this.lastFilterStepBySeat.clear();
+    for (const update of this.sliderChangeBySeat.values()) clearTimeout(update.timer);
+    this.sliderChangeBySeat.clear();
     this.commentReplayAfterBySeat.clear();
     this.recentComments = [];
   }

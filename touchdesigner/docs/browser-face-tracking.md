@@ -90,6 +90,37 @@ phone through the same WebSocket:
 No additional WebSocket DAT is required. If the switch cannot be resolved,
 `tracking_errors` and the `tracking_error` storage entry report the problem.
 
+### Phone slider control
+
+The phone's top-left slider uses the same seat-specific `ws_tracking`
+connection. It sends normalized values in the inclusive `0.0` to `1.0` range:
+
+```json
+{"type":"slider-change","value":0.42}
+```
+
+`SeatInputExt` exposes the current value on the **Seat Input** custom page as
+**Phone Value** (`Phonevalue`). The receiver applies valid phone updates to
+that parameter and publishes the authoritative value back to the phone:
+
+```json
+{"type":"slider-state","value":0.42}
+```
+
+This return state keeps the browser synchronized after reconnects and after
+the parameter is changed directly in TouchDesigner. Reference the normalized
+value from the artistic network with:
+
+```python
+op('/project1/SeatInput').par.Phonevalue
+```
+
+Bind, export, or remap that parameter to the effect control that should react
+to the visitor. If the external Python files are not file-synced to the Text
+DATs in the `.toe`, paste the updated `SeatInputExt.py` and
+`tracking_receiver_callbacks.py` contents into their corresponding DATs,
+re-initialize the extension, and save the project.
+
 Set the Web Render TOP and the downstream image-processing TOP chain to
 `720x1280`. Do not stretch a square intermediate into the portrait output; the
 browser landmarks are normalized against this exact portrait frame. The phone

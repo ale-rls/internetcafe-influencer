@@ -334,12 +334,22 @@ the influencer server owns seat routing and the latest state snapshot:
 ```text
 phone -- {"type":"filter-step","delta":-1|1} --> server --> same-seat ws_tracking
 phone <-- {"type":"filter-state","index":2,"count":5,"name":"Liquid Face"} -- ws_tracking
+phone -- {"type":"slider-change","value":0.42} --> server --> same-seat ws_tracking
+phone <-- {"type":"slider-state","value":0.42} -------------------------- ws_tracking
 phone <-- {"type":"live-ui-state","enabled":true} ----------------------------- TD
 phone <-- {"type":"fps-overlay-state","enabled":true} ------------------------ TD
 ```
 
 `filter-step` is limited to one accepted request per seat every 150 ms. The
-server caches `filter-state`, `live-ui-state`, and `fps-overlay-state` per seat
+top-left phone slider sends a normalized value from `0.0` to `1.0`; its
+continuous updates are rate-limited and its final release value is sent
+immediately. TouchDesigner exposes the value as the same seat's `SeatInput`
+**Phone Value** custom parameter. Reference it from an artistic operator with
+`op('/project1/SeatInput').par.Phonevalue`, or bind/export it to the desired
+effect parameter and remap the normalized range there.
+
+The server caches `filter-state`, `slider-state`, `live-ui-state`, and
+`fps-overlay-state` per seat
 and sends the latest values after that seat's phone reconnects. Disabling Live
 UI clears the phone's visible comment feed; comments received while it is
 disabled are not queued. The PhoneSender **FPS Overlay** toggle independently

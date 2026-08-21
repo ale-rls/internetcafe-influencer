@@ -84,6 +84,88 @@ test("FrameRouter routes tracking packets only to the matching seat tracking sin
   assert.equal(otherSeatSink.sent.length, 1, "other seat receives only its hello acknowledgement");
 });
 
+test("FrameRouter routes normalized slider changes only to the matching seat tracking sink", () => {
+  const router = new FrameRouter({ sliderChangeIntervalMs: 0, logger: { info() {}, warn() {} } });
+  const phone = new FakeSocket();
+  const sink = new FakeSocket();
+  const otherSeatSink = new FakeSocket();
+  register(router, phone, "phone", "1");
+  register(router, sink, "tracking-sink", "1");
+  register(router, otherSeatSink, "tracking-sink", "2");
+
+  phone.emit("message", Buffer.from(JSON.stringify({
+    type: "slider-change",
+    value: 0.42,
+  })), false);
+
+  assert.deepEqual(JSON.parse(sink.sent.at(-1).data), {
+    type: "slider-change",
+    value: 0.42,
+  });
+  assert.equal(otherSeatSink.sent.length, 1, "other seat receives only its hello acknowledgement");
+});
+
+test("FrameRouter coalesces rapid slider changes and preserves the latest value", async () => {
+  const router = new FrameRouter({ sliderChangeIntervalMs: 20, logger: { info() {}, warn() {} } });
+  const phone = new FakeSocket();
+  const sink = new FakeSocket();
+  register(router, phone, "phone", "1");
+  register(router, sink, "tracking-sink", "1");
+
+  for (const value of [0.1, 0.2, 0.3]) {
+    phone.emit("message", Buffer.from(JSON.stringify({ type: "slider-change", value })), false);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 35));
+
+  assert.deepEqual(sink.sent.slice(1).map(({ data }) => JSON.parse(data)), [
+    { type: "slider-change", value: 0.1 },
+    { type: "slider-change", value: 0.3 },
+  ]);
+  assert.equal(router.snapshot().counters.rateLimitedSliderChanges, 2);
+});
+
+test("FrameRouter rejects slider values outside the normalized finite-number range", () => {
+  for (const value of [-0.01, 1.01, "0.5", null]) {
+    const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+    const phone = new FakeSocket();
+    register(router, phone, "phone", "1");
+    phone.emit("message", Buffer.from(JSON.stringify({ type: "slider-change", value })), false);
+    assert.deepEqual(phone.closed, {
+      code: 1008,
+      reason: "slider-change value must be a finite number from 0 to 1",
+    });
+  }
+});
+
+test("FrameRouter forwards, caches, and replays the per-seat slider state", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const touchOutput = new FakeSocket();
+  const phone = new FakeSocket();
+  register(router, touchOutput, "touch-output", "3");
+  register(router, phone, "phone", "3");
+
+  touchOutput.emit("message", Buffer.from(JSON.stringify({
+    type: "slider-state",
+    value: 0.75,
+  })), false);
+
+  assert.deepEqual(JSON.parse(phone.sent.at(-1).data), {
+    type: "slider-state",
+    value: 0.75,
+  });
+  assert.deepEqual(router.snapshot().controlStates["3"].slider, {
+    type: "slider-state",
+    value: 0.75,
+  });
+
+  const replacementPhone = new FakeSocket();
+  register(router, replacementPhone, "phone", "3");
+  assert.deepEqual(replacementPhone.sent.map(({ data }) => JSON.parse(data)), [
+    { type: "hello-ack", role: "phone", seat: "3" },
+    { type: "slider-state", value: 0.75 },
+  ]);
+});
+
 test("FrameRouter rejects binary messages from receive-only roles", () => {
   const router = new FrameRouter({ logger: { info() {}, warn() {} } });
   const sink = new FakeSocket();

@@ -17,6 +17,7 @@ const MAX_LIVE_COMMENTS = 6;
 const LIVE_UI_TRANSITION_MS = 220;
 const WEBRTC_MAX_BITRATE = 4_000_000;
 const FRAME_WATCHDOG_STALL_MS = 5_000;
+const SLIDER_SEND_INTERVAL_MS = 40;
 
 const params = new URLSearchParams(window.location.search);
 const requestedSeat = params.get("seat");
@@ -44,6 +45,8 @@ const liveCommentTemplate = document.querySelector("#live-comment-template");
 const filterStateElement = document.querySelector("#filter-state");
 const previousFilterButton = document.querySelector("#previous-filter");
 const nextFilterButton = document.querySelector("#next-filter");
+const phoneSlider = document.querySelector("#phone-slider");
+const sliderControl = document.querySelector(".slider-control");
 document.querySelector("#seat").textContent = `Seat ${seat}`;
 
 const NOTIFICATION_APPS = {
@@ -80,6 +83,9 @@ let wakeLock;
 let wakeLockRequestInFlight = false;
 let liveUiEnabled = true;
 let clearLiveCommentsTimer;
+let sliderSendTimer;
+let pendingSliderValue;
+let lastSliderSentAt = -Infinity;
 const notificationTimers = new Map();
 
 function setStatus(message, kind = "waiting") {
@@ -257,6 +263,9 @@ function receiveControlMessage(rawMessage) {
       break;
     case "filter-state":
       receiveFilterState(payload);
+      break;
+    case "slider-state":
+      receiveSliderState(payload);
       break;
     default:
       break;
@@ -621,6 +630,7 @@ function setLiveUiEnabled(enabled) {
 
 function setFpsOverlayEnabled(enabled) {
   fpsOverlayElement.hidden = !enabled;
+  document.body.classList.toggle("fps-overlay-hidden", !enabled);
 }
 
 function receiveFilterState(payload) {
@@ -635,6 +645,67 @@ function requestFilterStep(delta) {
   if (delta !== -1 && delta !== 1) return;
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify({ type: "filter-step", delta }));
+}
+
+function validSliderValue(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+}
+
+function setSliderValue(value) {
+  const normalizedValue = validSliderValue(value);
+  if (normalizedValue == null) return;
+  const percentage = Math.round(normalizedValue * 100);
+  phoneSlider.value = String(normalizedValue);
+  phoneSlider.setAttribute("aria-valuetext", `${percentage}%`);
+  sliderControl.style.setProperty("--slider-percent", `${normalizedValue * 100}%`);
+}
+
+function receiveSliderState(payload) {
+  setSliderValue(payload.value);
+}
+
+function sendSliderValue(value) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: "slider-change", value }));
+  lastSliderSentAt = performance.now();
+}
+
+function flushPendingSliderValue() {
+  window.clearTimeout(sliderSendTimer);
+  sliderSendTimer = undefined;
+  if (pendingSliderValue == null) return;
+  const value = pendingSliderValue;
+  pendingSliderValue = undefined;
+  sendSliderValue(value);
+}
+
+function queueSliderValue(value) {
+  pendingSliderValue = value;
+  const remainingDelay = SLIDER_SEND_INTERVAL_MS - (performance.now() - lastSliderSentAt);
+  if (remainingDelay <= 0) {
+    flushPendingSliderValue();
+    return;
+  }
+  if (sliderSendTimer == null) {
+    sliderSendTimer = window.setTimeout(flushPendingSliderValue, remainingDelay);
+  }
+}
+
+function handleSliderInput() {
+  const value = validSliderValue(phoneSlider.valueAsNumber);
+  if (value == null) return;
+  setSliderValue(value);
+  queueSliderValue(value);
+}
+
+function handleSliderChange() {
+  const value = validSliderValue(phoneSlider.valueAsNumber);
+  if (value == null) return;
+  window.clearTimeout(sliderSendTimer);
+  sliderSendTimer = undefined;
+  pendingSliderValue = undefined;
+  setSliderValue(value);
+  sendSliderValue(value);
 }
 
 function showNotification(notification) {
@@ -869,6 +940,7 @@ window.addEventListener("beforeunload", () => {
   window.clearInterval(captureTimer);
   window.clearTimeout(reconnectTimer);
   window.clearTimeout(peerRestartTimer);
+  window.clearTimeout(sliderSendTimer);
   resetFrameWatchdog();
   window.clearTimeout(clearLiveCommentsTimer);
   for (const timers of notificationTimers.values()) {
@@ -885,5 +957,7 @@ resizeOutput();
 startButton.addEventListener("click", startCamera);
 previousFilterButton.addEventListener("click", () => requestFilterStep(-1));
 nextFilterButton.addEventListener("click", () => requestFilterStep(1));
+phoneSlider.addEventListener("input", handleSliderInput);
+phoneSlider.addEventListener("change", handleSliderChange);
 void requestScreenWakeLock();
 connect();

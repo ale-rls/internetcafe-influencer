@@ -7,6 +7,7 @@ Script CHOPs.
 """
 
 import json
+import math
 import struct
 
 import numpy as np
@@ -171,6 +172,37 @@ def _handle_filter_step(dat, payload):
 	return True
 
 
+def _handle_slider_change(dat, payload):
+	value = payload.get('value')
+	if type(value) not in (int, float):
+		_error(dat, 'invalid slider-change value')
+		return False
+	try:
+		value = float(value)
+	except (OverflowError, ValueError):
+		_error(dat, 'invalid slider-change value')
+		return False
+	if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+		_error(dat, 'invalid slider-change value')
+		return False
+
+	owner = _parent(dat)
+	if not hasattr(owner.par, 'Phonevalue'):
+		_error(dat, 'slider-change ignored: missing Phonevalue parameter')
+		return False
+
+	current = float(owner.par.Phonevalue.eval())
+	if current == value:
+		# A same-value assignment does not fire the Parameter Execute DAT, so
+		# explicitly acknowledge it with the authoritative TouchDesigner value.
+		owner.ext.SeatInputExt.PublishPhoneValue()
+	else:
+		# param_exec observes Phonevalue and publishes slider-state after the
+		# parameter has accepted (and, if needed, clamped) the new value.
+		owner.par.Phonevalue.val = value
+	return True
+
+
 def onConnect(dat):
 	dat.store('tracking_registered', False)
 	_clear_tracking(dat)
@@ -205,6 +237,11 @@ def onReceiveText(dat, rowIndex, message):
 			_handle_filter_step(dat, payload)
 		return
 
+	if payload.get('type') == 'slider-change':
+		if dat.fetch('tracking_registered', False, search=False):
+			_handle_slider_change(dat, payload)
+		return
+
 	if payload.get('type') != 'hello-ack':
 		return
 	if payload.get('role') != 'tracking-sink' or str(payload.get('seat')) != str(_seat(dat)):
@@ -214,6 +251,7 @@ def onReceiveText(dat, rowIndex, message):
 	dat.store('tracking_registered', True)
 	_status(dat, 'connected: tracking-sink seat {}'.format(_seat(dat)), log=True)
 	_send_filter_state(dat)
+	_parent(dat).ext.SeatInputExt.PublishPhoneValue()
 	return
 
 

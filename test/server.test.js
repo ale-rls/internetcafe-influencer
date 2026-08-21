@@ -166,6 +166,7 @@ test("HTTP routes expose health, QR, static phone content, and expected redirect
       forwardedControlMessages: 0,
       droppedControlNoDestination: 0,
       rateLimitedFilterSteps: 0,
+      rateLimitedSliderChanges: 0,
       replayedLiveComments: 0,
     },
   });

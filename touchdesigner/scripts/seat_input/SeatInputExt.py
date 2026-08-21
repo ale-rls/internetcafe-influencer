@@ -15,12 +15,15 @@ Attach this extension in Customize Component -> Extensions with:
 Use ``SeatInputExt`` as the extension name.
 """
 
+import json
+
 
 PARAM_DEFAULTS = {
 	'Seat': 1,
 	'Host': '127.0.0.1',
 	'Port': 8080,
 	'Transport': 'jpeg',
+	'Phonevalue': 0.5,
 	'Active': False,
 }
 
@@ -76,6 +79,16 @@ class ParameterManager:
 			if p.eval() not in p.menuNames:
 				p.val = PARAM_DEFAULTS['Transport']
 
+		if not hasattr(par, 'Phonevalue'):
+			p = page.appendFloat('Phonevalue', label='Phone Value')[0]
+			p.default = p.val = PARAM_DEFAULTS['Phonevalue']
+		else:
+			p = par.Phonevalue
+		p.min = 0.0
+		p.max = 1.0
+		p.clampMin = True
+		p.clampMax = True
+
 		if not hasattr(par, 'Active'):
 			p = page.appendToggle('Active', label='Active')[0]
 			p.default = p.val = PARAM_DEFAULTS['Active']
@@ -90,7 +103,7 @@ class ParameterManager:
 			return
 
 		param_exec.par.op = self.ownerComp.path
-		param_exec.par.pars = 'Active Seat Host Port Transport Reload'
+		param_exec.par.pars = 'Active Seat Host Port Transport Phonevalue Reload'
 		param_exec.par.valuechange = True
 		param_exec.par.custom = True
 		param_exec.par.builtin = False
@@ -192,6 +205,24 @@ class SeatInputExt:
 			delayFrames=1,
 		)
 
+	def PublishPhoneValue(self):
+		"""Publish the normalized phone slider value when tracking is registered."""
+		ws_tracking = self.ownerComp.op('ws_tracking')
+		if ws_tracking is None:
+			return False
+		if not ws_tracking.fetch('tracking_registered', False, search=False):
+			return False
+
+		value = max(0.0, min(1.0, float(self.ownerComp.par.Phonevalue.eval())))
+		bytes_sent = ws_tracking.sendText(json.dumps({
+			'type': 'slider-state',
+			'value': value,
+		}))
+		if bytes_sent is not None and bytes_sent < 0:
+			print('SeatInput Error: slider-state send failed ({})'.format(bytes_sent))
+			return False
+		return True
+
 	def OnParameterChange(self, par):
 		if par.name == 'Active':
 			if par.eval():
@@ -201,6 +232,8 @@ class SeatInputExt:
 		elif par.name in ('Seat', 'Host', 'Port', 'Transport') and self.state == 'RUNNING':
 			self.Stop()
 			self.Start()
+		elif par.name == 'Phonevalue':
+			self.PublishPhoneValue()
 
 	def OnPulse(self, par):
 		if par.name == 'Reload':
