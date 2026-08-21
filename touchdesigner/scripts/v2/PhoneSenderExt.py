@@ -21,10 +21,11 @@ PARAM_DEFAULTS = {
 	'Active': False,
 	'Liveui': True,
 	'Showfps': True,
+	'Phonecontrols': True,
 }
 
 LEGACY_FILTER_PARAMETERS = ('Filterindex', 'Filtercount', 'Filtername')
-CONTROL_PARAMETERS = ('Active', 'Seat', 'Liveui', 'Showfps')
+CONTROL_PARAMETERS = ('Active', 'Seat', 'Liveui', 'Showfps', 'Phonecontrols')
 SETTINGS_PARAMETERS = (
 	'Host',
 	'Port',
@@ -121,6 +122,10 @@ class ParameterManager:
 			p = control_page.appendToggle('Showfps', label='FPS Overlay')[0]
 			p.default = p.val = PARAM_DEFAULTS['Showfps']
 
+		if not hasattr(par, 'Phonecontrols'):
+			p = control_page.appendToggle('Phonecontrols', label='Phone Controls')[0]
+			p.default = p.val = PARAM_DEFAULTS['Phonecontrols']
+
 		# Remove parameters created by the first filter-control implementation.
 		# Filter state now comes directly from the authoritative Switch TOP.
 		for name in LEGACY_FILTER_PARAMETERS:
@@ -146,7 +151,7 @@ class ParameterManager:
 			return
 
 		param_exec.par.op = self.ownerComp.path
-		param_exec.par.pars = 'Active Seat Host Port Liveui Showfps Benchmarksender'
+		param_exec.par.pars = 'Active Seat Host Port Liveui Showfps Phonecontrols Benchmarksender'
 		param_exec.par.valuechange = True
 		param_exec.par.custom = True
 		param_exec.par.builtin = False
@@ -247,10 +252,17 @@ class PhoneSenderExt:
 			'enabled': bool(self.ownerComp.par.Showfps.eval()),
 		})
 
+	def SendPhoneControlsState(self):
+		return self._sendControlMessage({
+			'type': 'phone-controls-state',
+			'enabled': bool(self.ownerComp.par.Phonecontrols.eval()),
+		})
+
 	def SendControlState(self):
 		"""Publish PhoneSender-owned state after WebSocket registration."""
 		self.SendLiveUiState()
 		self.SendFpsOverlayState()
+		self.SendPhoneControlsState()
 
 	def StartSenderBenchmark(self):
 		send_execute = self.ownerComp.op('send_execute')
@@ -280,5 +292,7 @@ class PhoneSenderExt:
 			self.SendLiveUiState()
 		elif par.name == 'Showfps':
 			self.SendFpsOverlayState()
+		elif par.name == 'Phonecontrols':
+			self.SendPhoneControlsState()
 		elif par.name == 'Benchmarksender':
 			self.StartSenderBenchmark()

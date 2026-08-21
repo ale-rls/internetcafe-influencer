@@ -261,6 +261,9 @@ function receiveControlMessage(rawMessage) {
     case "fps-overlay-state":
       if (typeof payload.enabled === "boolean") setFpsOverlayEnabled(payload.enabled);
       break;
+    case "phone-controls-state":
+      if (typeof payload.enabled === "boolean") setPhoneControlsEnabled(payload.enabled);
+      break;
     case "filter-state":
       receiveFilterState(payload);
       break;
@@ -631,6 +634,13 @@ function setLiveUiEnabled(enabled) {
 function setFpsOverlayEnabled(enabled) {
   fpsOverlayElement.hidden = !enabled;
   document.body.classList.toggle("fps-overlay-hidden", !enabled);
+}
+
+function setPhoneControlsEnabled(enabled) {
+  document.body.classList.toggle("phone-controls-hidden", !enabled);
+  previousFilterButton.disabled = !enabled;
+  nextFilterButton.disabled = !enabled;
+  phoneSlider.disabled = !enabled;
 }
 
 function receiveFilterState(payload) {

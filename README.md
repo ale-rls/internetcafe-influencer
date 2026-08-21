@@ -338,6 +338,7 @@ phone -- {"type":"slider-change","value":0.42} --> server --> same-seat ws_track
 phone <-- {"type":"slider-state","value":0.42} -------------------------- ws_tracking
 phone <-- {"type":"live-ui-state","enabled":true} ----------------------------- TD
 phone <-- {"type":"fps-overlay-state","enabled":true} ------------------------ TD
+phone <-- {"type":"phone-controls-state","enabled":true} -------------------- TD
 ```
 
 `filter-step` is limited to one accepted request per seat every 150 ms. The
@@ -348,16 +349,15 @@ immediately. TouchDesigner exposes the value as the same seat's `SeatInput`
 `op('/project1/SeatInput').par.Phonevalue`, or bind/export it to the desired
 effect parameter and remap the normalized range there.
 
-The server caches `filter-state`, `slider-state`, `live-ui-state`, and
-`fps-overlay-state` per seat
+The server caches `filter-state`, `slider-state`, `live-ui-state`,
+`fps-overlay-state`, and `phone-controls-state` per seat
 and sends the latest values after that seat's phone reconnects. Disabling Live
 UI clears the phone's visible comment feed; comments received while it is
 disabled are not queued. The PhoneSender **FPS Overlay** toggle independently
 hides or shows the entire status card, including its title, seat, connection
-state, and uplink/downlink values. Filter arrows remain available
-because Live UI is not a master switch for all phone controls. Both arrow
-buttons call `requestFilterStep(delta)`, so a later swipe gesture can use the
-same protocol.
+state, and uplink/downlink values. The independent **Phone Controls** toggle
+hides or shows the slider and both filter arrows. Both arrow buttons call
+`requestFilterStep(delta)`, so a later swipe gesture can use the same protocol.
 
 ## TouchDesigner
 

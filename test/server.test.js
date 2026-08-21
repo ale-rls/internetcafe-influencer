@@ -320,6 +320,13 @@ test("TouchDesigner state is seat-specific and snapshots to a reconnecting phone
     enabled: false,
   });
 
+  const phoneControlsMessage = nextMessage(phone);
+  touchOutput.send(JSON.stringify({ type: "phone-controls-state", enabled: false }));
+  assert.deepEqual(JSON.parse((await phoneControlsMessage).data.toString()), {
+    type: "phone-controls-state",
+    enabled: false,
+  });
+
   const filterMessage = nextMessage(phone);
   trackingSink.send(JSON.stringify({
     type: "filter-state",
@@ -340,7 +347,7 @@ test("TouchDesigner state is seat-specific and snapshots to a reconnecting phone
 
   phone = new WebSocket(`${baseUrl.replace("http", "ws")}/stream`);
   await once(phone, "open");
-  const reconnectMessages = waitForJsonMessages(phone, 4);
+  const reconnectMessages = waitForJsonMessages(phone, 5);
   phone.send(JSON.stringify({ type: "hello", role: "phone", seat: 2 }));
   const messages = await reconnectMessages;
   assert.deepEqual(messages.find(({ type }) => type === "hello-ack"), {
@@ -354,6 +361,10 @@ test("TouchDesigner state is seat-specific and snapshots to a reconnecting phone
   });
   assert.deepEqual(messages.find(({ type }) => type === "fps-overlay-state"), {
     type: "fps-overlay-state",
+    enabled: false,
+  });
+  assert.deepEqual(messages.find(({ type }) => type === "phone-controls-state"), {
+    type: "phone-controls-state",
     enabled: false,
   });
   assert.deepEqual(messages.find(({ type }) => type === "filter-state"), {

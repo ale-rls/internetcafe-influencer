@@ -21,7 +21,7 @@ Attach `PhoneSenderExt` through **Customize Component**, then re-init the
 extension after all exact-name children exist. It creates two custom parameter
 pages:
 
-- **Control**: Active, Seat, Live UI, and FPS Overlay
+- **Control**: Active, Seat, Live UI, FPS Overlay, and Phone Controls
 - **Settings**: Host, Port, JPEG Quality, Output FPS, Benchmark Samples, and
   Benchmark Sender
 
@@ -130,3 +130,16 @@ publishes the current state over `ws_output`:
 
 The component republishes this state after WebSocket registration, and the
 server caches it per seat so reconnecting phones receive the latest setting.
+
+## Phone controls
+
+`Phonecontrols` controls the visitor-facing input elements on the phone: the
+normalized slider and both previous/next filter buttons. It does not hide the
+Live comment overlay or FPS status card. Changing the toggle publishes:
+
+```json
+{"type":"phone-controls-state","enabled":true}
+```
+
+The component republishes this state after WebSocket registration, and the
+server caches it per seat so reconnecting phones restore the latest setting.

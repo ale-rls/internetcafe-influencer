@@ -159,6 +159,9 @@ export class FrameRouter {
     if (client.role === "touch-output" && message?.type === "fps-overlay-state") {
       return this.handleFpsOverlayState(client, message);
     }
+    if (client.role === "touch-output" && message?.type === "phone-controls-state") {
+      return this.handlePhoneControlsState(client, message);
+    }
     if (
       (client.role === "tracking-sink" || client.role === "touch-output")
       && message?.type === "filter-state"
@@ -427,6 +430,15 @@ export class FrameRouter {
     this.sendTextToRole(client.seat, "phone", state.fpsOverlay);
   }
 
+  handlePhoneControlsState(client, message) {
+    if (typeof message.enabled !== "boolean") {
+      return this.reject(client.socket, "phone-controls-state enabled must be boolean");
+    }
+    const state = this.controlState(client.seat);
+    state.phoneControls = { type: "phone-controls-state", enabled: message.enabled };
+    this.sendTextToRole(client.seat, "phone", state.phoneControls);
+  }
+
   handleFilterState(client, message) {
     const index = message.index;
     const count = message.count;
@@ -523,6 +535,7 @@ export class FrameRouter {
       if (state?.fpsOverlay) this.sendTextToRole(seat, "phone", state.fpsOverlay);
       if (state?.filter) this.sendTextToRole(seat, "phone", state.filter);
       if (state?.slider) this.sendTextToRole(seat, "phone", state.slider);
+      if (state?.phoneControls) this.sendTextToRole(seat, "phone", state.phoneControls);
       this.replayRecentComments(seat);
     }
     if (role === "phone" || role === "webrtc-bridge") {

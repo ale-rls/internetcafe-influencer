@@ -195,6 +195,11 @@ body.transport-webrtc #webrtc-output { display: block; }
 .filter-step:active { transform: translateY(-50%) scale(.94); }
 .filter-step:focus-visible { outline: 2px solid white; outline-offset: 3px; }
 
+body.phone-controls-hidden .filter-step,
+body.phone-controls-hidden .slider-control {
+  display: none;
+}
+
 .slider-control {
   --slider-percent: 50%;
   position: fixed;

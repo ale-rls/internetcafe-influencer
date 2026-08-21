@@ -328,6 +328,35 @@ test("FrameRouter forwards and replays the per-seat FPS overlay state", () => {
   ]);
 });
 
+test("FrameRouter forwards and replays the per-seat phone controls state", () => {
+  const router = new FrameRouter({ logger: { info() {}, warn() {} } });
+  const touchOutput = new FakeSocket();
+  const phone = new FakeSocket();
+  register(router, touchOutput, "touch-output", "4");
+  register(router, phone, "phone", "4");
+
+  touchOutput.emit("message", Buffer.from(JSON.stringify({
+    type: "phone-controls-state",
+    enabled: false,
+  })), false);
+
+  assert.deepEqual(JSON.parse(phone.sent.at(-1).data), {
+    type: "phone-controls-state",
+    enabled: false,
+  });
+  assert.deepEqual(router.snapshot().controlStates["4"].phoneControls, {
+    type: "phone-controls-state",
+    enabled: false,
+  });
+
+  const replacementPhone = new FakeSocket();
+  register(router, replacementPhone, "phone", "4");
+  assert.deepEqual(replacementPhone.sent.map(({ data }) => JSON.parse(data)), [
+    { type: "hello-ack", role: "phone", seat: "4" },
+    { type: "phone-controls-state", enabled: false },
+  ]);
+});
+
 test("FrameRouter relays WebRTC signaling only between matching-seat peers", () => {
   const router = new FrameRouter({ logger: { info() {}, warn() {} } });
   const phone = new FakeSocket();
