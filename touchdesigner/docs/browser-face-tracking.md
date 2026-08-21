@@ -47,6 +47,7 @@ Create these operators beside the artist's existing face-tracking network:
 | `tracking_receiver_callbacks` | Text DAT | Paste `../scripts/tracking/tracking_receiver_callbacks.py`. |
 | `tracking_landmarks` | Script CHOP | Callbacks DAT `tracking_script_callbacks`. |
 | `tracking_script_callbacks` | Text DAT | Paste `../scripts/tracking/tracking_script_callbacks.py`. |
+| `landmarks_json` | Text DAT | Optional compatibility output for the artist patch. |
 | `blendshapes` | Script CHOP | Callbacks DAT `blendshape_script_callbacks`; 52 named channels with one sample each. |
 | `blendshape_script_callbacks` | Text DAT | Paste `../scripts/tracking/blendshape_script_callbacks.py`. |
 | `tracking_status` | Text DAT | Optional visible connection status. |
@@ -107,6 +108,12 @@ strip layout as before.
 The callback converts MediaPipe's top-down y coordinate to TouchDesigner's
 bottom-up UV convention. If the image is mirrored elsewhere in the network,
 set `FLIP_X = True` near the top of `tracking_script_callbacks.py`.
+
+When a sibling Text DAT named `landmarks_json` exists, the receiver also mirrors
+each binary packet into the artist patch's legacy JSON contract. Landmark
+coordinates remain in MediaPipe's original top-down normalized coordinate
+system at `faceLandmarkResult.faceLandmarks[0]`. A no-face packet writes an
+empty `faceLandmarks` array so stale data is cleared.
 
 ### Connect the artist's blendshape patch
 

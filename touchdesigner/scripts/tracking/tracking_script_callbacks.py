@@ -19,16 +19,20 @@ TRACKING_WEBSOCKET_NAME = 'ws_tracking'
 FLIP_X = False
 FLIP_Y = True
 _OUTPUT = np.zeros((2, OUTPUT_SAMPLE_COUNT), dtype=np.float32)
+_LAYOUT_READY = set()
 
 
 def _ensure_layout(scriptOp):
-	channels = scriptOp.chans()
-	if len(channels) != 2 or channels[0].name != 'x' or channels[1].name != 'y':
-		scriptOp.clear()
-		scriptOp.appendChan('x')
-		scriptOp.appendChan('y')
-	if scriptOp.numSamples != OUTPUT_SAMPLE_COUNT:
-		scriptOp.numSamples = OUTPUT_SAMPLE_COUNT
+	key = scriptOp.path
+	# Some TouchDesigner builds do not expose a Script CHOP's output metadata
+	# while that same operator is cooking. Build this fixed layout once.
+	if key in _LAYOUT_READY:
+		return
+	scriptOp.clear()
+	scriptOp.numSamples = OUTPUT_SAMPLE_COUNT
+	scriptOp.appendChan('x')
+	scriptOp.appendChan('y')
+	_LAYOUT_READY.add(key)
 
 
 def onCook(scriptOp):

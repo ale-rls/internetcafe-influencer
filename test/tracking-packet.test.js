@@ -48,6 +48,23 @@ test("TouchDesigner owns packet arrays and bulk-copies stable CHOP outputs", () 
     assert.match(callbacks, /scriptOp\.copyNumpyArray\(_OUTPUT\)/);
   }
   assert.doesNotMatch(landmarks, /scriptOp\['[xy]'\]\[index\]/);
+  assert.doesNotMatch(landmarks, /scriptOp\.chans\(\)/);
+  assert.match(landmarks, /if key in _LAYOUT_READY:\s+return/);
+  assert.doesNotMatch(blendshapes, /scriptOp\.numChans/);
+  assert.match(blendshapes, /if key in _LAYOUT_READY:\s+return/);
+});
+
+test("TouchDesigner mirrors binary landmarks into the artist JSON DAT", () => {
+  const receiver = readFileSync(
+    new URL("../touchdesigner/scripts/tracking/tracking_receiver_callbacks.py", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(receiver, /LANDMARK_JSON_NAME = 'landmarks_json'/);
+  assert.match(receiver, /'faceLandmarkResult': \{/);
+  assert.match(receiver, /'faceLandmarks': face_landmarks/);
+  assert.match(receiver, /_write_landmarks_json\(dat, landmarks if valid else \(\)\)/);
+  assert.match(receiver, /def _clear_tracking[\s\S]*?_write_landmarks_json\(dat\)/);
 });
 
 test("tracking packets contain a versioned header and little-endian Float32 landmarks", () => {

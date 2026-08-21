@@ -26,6 +26,7 @@ EXPECTED_VALUES_PER_BLENDSHAPE = 1
 EXPECTED_BLENDSHAPE_COUNT = 52
 MAX_LANDMARKS = 1024
 TRACKING_CHOP_NAMES = ('tracking_landmarks', 'blendshapes', 'tracking_blendshapes')
+LANDMARK_JSON_NAME = 'landmarks_json'
 
 
 def _parent(dat):
@@ -69,6 +70,34 @@ def _cook_tracking_chops(dat):
 		run('args[0].cook(force=True)', tracking_chop, endFrame=True)
 
 
+def _write_landmarks_json(dat, landmarks=()):
+	"""Mirror landmarks into the artist patch's legacy JSON Text DAT."""
+	target = _parent(dat).op(LANDMARK_JSON_NAME)
+	if target is None or not hasattr(target, 'text'):
+		return
+
+	face_landmarks = []
+	if len(landmarks):
+		face_landmarks = [[
+			{
+				'x': float(landmark[0]),
+				'y': float(landmark[1]),
+				'z': float(landmark[2]),
+			}
+			for landmark in landmarks
+		]]
+
+	# Match the browser MediaPipe result shape previously consumed by the
+	# artist patch. The outer wrapper preserves the old Web Render DAT contract.
+	target.text = json.dumps({
+		'faceLandmarkResult': {
+			'faceLandmarks': face_landmarks,
+			'faceBlendshapes': [],
+			'facialTransformationMatrixes': [],
+		},
+	}, separators=(',', ':'))
+
+
 def _clear_tracking(dat):
 	dat.store('tracking_landmarks', ())
 	dat.store('tracking_blendshapes', ())
@@ -76,6 +105,7 @@ def _clear_tracking(dat):
 	dat.store('tracking_blendshapes_valid', False)
 	dat.store('tracking_landmark_count', 0)
 	dat.store('tracking_blendshape_count', 0)
+	_write_landmarks_json(dat)
 	_cook_tracking_chops(dat)
 
 
@@ -289,6 +319,7 @@ def onReceiveBinary(dat, contents):
 		dat.store('tracking_landmark_count', len(landmarks) if valid else 0)
 		dat.store('tracking_blendshape_count', len(blendshapes) if blendshapes_valid else 0)
 		dat.store('tracking_error', '')
+		_write_landmarks_json(dat, landmarks if valid else ())
 		_cook_tracking_chops(dat)
 	except Exception as error:
 		_clear_tracking(dat)
