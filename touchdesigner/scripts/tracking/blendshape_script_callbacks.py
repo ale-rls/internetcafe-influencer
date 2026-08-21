@@ -70,19 +70,15 @@ _LAYOUT_READY = set()
 
 def _ensure_layout(scriptOp):
 	key = scriptOp.path
-	if (
-		key in _LAYOUT_READY
-		and scriptOp.numChans == len(BLENDSHAPE_NAMES)
-		and scriptOp.numSamples == 1
-	):
+	# Some TouchDesigner builds make the Script CHOP's output metadata
+	# unavailable while that same operator is cooking. Build the stable layout
+	# once instead of inspecting numChans on every cook.
+	if key in _LAYOUT_READY:
 		return
-	channels = scriptOp.chans()
-	if tuple(channel.name for channel in channels) != BLENDSHAPE_NAMES:
-		scriptOp.clear()
-		for name in BLENDSHAPE_NAMES:
-			scriptOp.appendChan(name)
-	if scriptOp.numSamples != 1:
-		scriptOp.numSamples = 1
+	scriptOp.clear()
+	scriptOp.numSamples = 1
+	for name in BLENDSHAPE_NAMES:
+		scriptOp.appendChan(name)
 	_LAYOUT_READY.add(key)
 
 
